@@ -80,9 +80,11 @@ def get_webui_token():
         print("Created Open WebUI admin account.")
         return result["token"]
     except urllib.error.HTTPError as exc:
-        if exc.code not in (400, 409):
-            raise
-        print("Admin account already exists, signing in instead.")
+        # Any signup failure (account already exists -> 400/409, or public signup closed
+        # because an admin already exists -> 403) means there's already a user to log into
+        # instead. If WEBUI_ADMIN_EMAIL/PASSWORD don't match that existing account, the
+        # signin call below raises its own clear error (401).
+        print(f"Signup unavailable ({exc.code}), trying sign-in with the configured admin credentials instead.")
         result = http_json(
             "POST",
             f"{OPENWEBUI_URL}/api/v1/auths/signin",
