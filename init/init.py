@@ -23,7 +23,7 @@ import uuid
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434").rstrip("/")
 OPENWEBUI_URL = os.environ.get("OPENWEBUI_URL", "http://open-webui:80").rstrip("/")
-MODEL_NAME = os.environ.get("MODEL_NAME", "qwen2.5:1.5b")
+MODEL_NAME = os.environ.get("MODEL_NAME", "llama3.2:1b")
 ADMIN_NAME = os.environ.get("WEBUI_ADMIN_NAME", "Demo Admin")
 ADMIN_EMAIL = os.environ["WEBUI_ADMIN_EMAIL"]
 ADMIN_PASSWORD = os.environ["WEBUI_ADMIN_PASSWORD"]

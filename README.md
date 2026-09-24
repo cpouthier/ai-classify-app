@@ -11,7 +11,7 @@ Namespace `ai-demo` on cluster1:
 
 | Component | Role | Storage |
 |---|---|---|
-| Ollama | Serves a small local model (`qwen2.5:1.5b` or `llama3.2:1b`, CPU only) | PVC `ollama-models`, 5Gi |
+| Ollama | Serves a small local model (`llama3.2:1b` by default, `qwen2.5:1.5b` also fits, CPU only) | PVC `ollama-models`, 5Gi |
 | Open WebUI | Chat UI, RAG frontend, backed by pgvector | PVC `webui-data`, 2Gi |
 | PostgreSQL + pgvector | Vector store and Open WebUI's database | PVC `postgres-data`, 5Gi |
 
@@ -144,3 +144,10 @@ app-consistent logical restore, not a raw disk snapshot.
 - The init Job's knowledge base upload is sized for a small demo corpus (ConfigMap backed,
   well under 1 MiB total). For a larger corpus, upload documents through the Open WebUI UI
   after the stack is up instead.
+- CPU-only LLM inference is memory-hungry and bursty in a way the Ollama pod's cgroup limit
+  alone doesn't fully contain, on a single-node cluster where Kubernetes shares the box with
+  the OS and everything else running on it (filesystem cache, other apps), a chat request can
+  in principle push the whole host into swap-thrashing before Kubernetes has a chance to react.
+  If you're running this on constrained or shared hardware, keep an eye on host-level memory
+  during a chat (not just `kubectl top`), and consider reserving memory for the OS/control
+  plane in kubelet (`--system-reserved`/`--kube-reserved`) as a safety net.

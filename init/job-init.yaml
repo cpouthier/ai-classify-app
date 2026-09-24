@@ -35,7 +35,7 @@ spec:
             - name: OPENWEBUI_URL
               value: "http://ai-demo-open-webui:80"
             - name: MODEL_NAME
-              value: "qwen2.5:1.5b"
+              value: "llama3.2:1b"
             - name: KB_NAME
               value: "puls8-demo-kb"
             - name: WEBUI_ADMIN_NAME
