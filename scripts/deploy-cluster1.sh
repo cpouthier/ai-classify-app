@@ -113,36 +113,60 @@ done
 "${KCTL[@]}" wait --for=condition=complete job/ai-demo-init -n ai-demo --timeout=1800s
 
 echo "==> Kasten: S3 location profile"
-read -r -p "S3 bucket name: " S3_BUCKET
-read -r -p "S3 region [us-east-1]: " S3_REGION
-S3_REGION="${S3_REGION:-us-east-1}"
-read -r -p "S3 endpoint (leave empty for AWS S3): " S3_ENDPOINT
-read -r -p "S3 access key id: " S3_ACCESS_KEY
-read -r -s -p "S3 secret access key: " S3_SECRET_KEY
-echo
+read -r -p "Create the Kasten Location Profile now via this script? [y/N] " CREATE_PROFILE
+if [[ "${CREATE_PROFILE}" == "y" || "${CREATE_PROFILE}" == "Y" ]]; then
+  read -r -p "S3 bucket name: " S3_BUCKET
+  read -r -p "S3 region [us-east-1]: " S3_REGION
+  S3_REGION="${S3_REGION:-us-east-1}"
+  read -r -p "S3 endpoint (leave empty for AWS S3): " S3_ENDPOINT
+  read -r -p "S3 access key id: " S3_ACCESS_KEY
+  read -r -s -p "S3 secret access key: " S3_SECRET_KEY
+  echo
 
-"${KCTL[@]}" create secret generic ai-demo-s3-creds \
-  -n kasten-io \
-  --from-literal=aws_access_key_id="${S3_ACCESS_KEY}" \
-  --from-literal=aws_secret_access_key="${S3_SECRET_KEY}" \
-  --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
+  "${KCTL[@]}" create secret generic ai-demo-s3-creds \
+    -n kasten-io \
+    --from-literal=aws_access_key_id="${S3_ACCESS_KEY}" \
+    --from-literal=aws_secret_access_key="${S3_SECRET_KEY}" \
+    --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
 
-PROFILE_YAML=$(mktemp)
-sed \
-  -e "s/REPLACE_ME_BUCKET_NAME/${S3_BUCKET}/" \
-  -e "s/REPLACE_ME_REGION/${S3_REGION}/" \
-  kasten/location-profile.yaml > "${PROFILE_YAML}"
-if [[ -n "${S3_ENDPOINT}" ]]; then
-  sed -i.bak "s#.*endpoint: .*#      endpoint: ${S3_ENDPOINT}#" "${PROFILE_YAML}"
-  rm -f "${PROFILE_YAML}.bak"
+  PROFILE_YAML=$(mktemp)
+  sed \
+    -e "s/REPLACE_ME_BUCKET_NAME/${S3_BUCKET}/" \
+    -e "s/REPLACE_ME_REGION/${S3_REGION}/" \
+    kasten/location-profile.yaml > "${PROFILE_YAML}"
+  if [[ -n "${S3_ENDPOINT}" ]]; then
+    sed -i.bak "s#.*endpoint: .*#      endpoint: ${S3_ENDPOINT}#" "${PROFILE_YAML}"
+    rm -f "${PROFILE_YAML}.bak"
+  fi
+  "${KCTL[@]}" apply -f "${PROFILE_YAML}"
+  rm -f "${PROFILE_YAML}"
+else
+  echo "Skipped. Create the ai-demo-s3-creds Secret and apply kasten/location-profile.yaml"
+  echo "manually (namespace kasten-io) before the Policy below can export anywhere useful."
 fi
-"${KCTL[@]}" apply -f "${PROFILE_YAML}"
-rm -f "${PROFILE_YAML}"
 
-echo "==> Kasten: policy, blueprint, blueprint binding"
+echo "==> Kasten: hourly backup + export policy"
 "${KCTL[@]}" apply -f kasten/policy.yaml
-"${KCTL[@]}" apply -f kasten/blueprint-postgres.yaml
-"${KCTL[@]}" apply -f kasten/blueprintbinding-postgres.yaml
+
+echo "==> Kasten: PostgreSQL blueprint"
+read -r -p "Create the PostgreSQL Blueprint and BlueprintBinding now via this script? [y/N] " CREATE_BLUEPRINT
+if [[ "${CREATE_BLUEPRINT}" == "y" || "${CREATE_BLUEPRINT}" == "Y" ]]; then
+  "${KCTL[@]}" apply -f kasten/blueprint-postgres.yaml
+  "${KCTL[@]}" apply -f kasten/blueprintbinding-postgres.yaml
+else
+  echo "Skipped. Apply kasten/blueprint-postgres.yaml and kasten/blueprintbinding-postgres.yaml"
+  echo "manually, otherwise PostgreSQL falls back to plain (non app-consistent) PVC snapshotting."
+fi
+
+echo "==> Kasten: sc-prod-to-sc-dr TransformSet"
+read -r -p "Create the TransformSet now via this script? [y/N] " CREATE_TRANSFORMSET
+if [[ "${CREATE_TRANSFORMSET}" == "y" || "${CREATE_TRANSFORMSET}" == "Y" ]]; then
+  "${KCTL[@]}" apply -f kasten/transformset.yaml
+  echo "Note: this TransformSet only takes effect during the DR restore on cluster2,"
+  echo "applying it here just stages it, it also needs to exist on cluster2 for demo-dr.sh."
+else
+  echo "Skipped. Apply kasten/transformset.yaml manually, on cluster2 at minimum (see README)."
+fi
 
 echo "==> Done. ai-demo namespace is up on cluster1, hourly backup+export policy is active."
-echo "    Remember to import the ai-demo-s3 profile (or an equivalent one) on cluster2 before the DR demo."
+echo "    Remember cluster2 needs the same Location Profile and the TransformSet before the DR demo."

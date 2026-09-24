@@ -68,8 +68,10 @@ This walks through, in order: listing the cluster's StorageClasses and asking wh
 for the PVCs, creating the namespace, prompting for and creating the PostgreSQL/Open WebUI/S3
 credentials as Kubernetes Secrets, deploying PostgreSQL, installing the `open-webui` Helm chart
 (with the `ollama` sub-chart) from `charts/values-open-webui-cluster1.yaml`, running the init
-Job to pull the model and load `kb/`, then creating the Kasten Location Profile, hourly Policy,
-and PostgreSQL Blueprint/Binding.
+Job to pull the model and load `kb/`, then applying the hourly backup+export Policy. For the
+Location Profile, the PostgreSQL Blueprint/Binding, and the TransformSet, the script asks
+separately whether to create each one itself or leave it to you to apply manually, in case
+you'd rather set them up by hand or already have them from a previous run.
 
 To tear it down: `./scripts/teardown-cluster1.sh [kube-context]` (keeps the S3 profile and
 credentials, since cluster2 still needs them for DR import).
