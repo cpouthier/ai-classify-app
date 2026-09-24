@@ -64,11 +64,12 @@ endpoint) reachable from both clusters for Kasten backup/export.
 ./scripts/deploy-cluster1.sh [kube-context]
 ```
 
-This walks through, in order: creating the namespace, prompting for and creating the
-PostgreSQL/Open WebUI/S3 credentials as Kubernetes Secrets, deploying PostgreSQL, installing
-the `open-webui` Helm chart (with the `ollama` sub-chart) from `charts/values-open-webui-cluster1.yaml`,
-running the init Job to pull the model and load `kb/`, then creating the Kasten Location
-Profile, hourly Policy, and PostgreSQL Blueprint/Binding.
+This walks through, in order: listing the cluster's StorageClasses and asking which one to use
+for the PVCs, creating the namespace, prompting for and creating the PostgreSQL/Open WebUI/S3
+credentials as Kubernetes Secrets, deploying PostgreSQL, installing the `open-webui` Helm chart
+(with the `ollama` sub-chart) from `charts/values-open-webui-cluster1.yaml`, running the init
+Job to pull the model and load `kb/`, then creating the Kasten Location Profile, hourly Policy,
+and PostgreSQL Blueprint/Binding.
 
 To tear it down: `./scripts/teardown-cluster1.sh [kube-context]` (keeps the S3 profile and
 credentials, since cluster2 still needs them for DR import).

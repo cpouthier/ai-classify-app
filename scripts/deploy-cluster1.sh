@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Deploy the Puls8 RAG demo stack (Postgres+pgvector, Ollama, Open WebUI) plus the Kasten
 # location profile, policy, and PostgreSQL blueprint on cluster1 (the production side of the
-# BC/DR demo, StorageClass sc-prod).
+# BC/DR demo). Lists available StorageClasses and asks which one to use for the PVCs, so it
+# is not tied to a hardcoded sc-prod name.
 #
 # Usage: ./scripts/deploy-cluster1.sh [kube-context]
 #
@@ -21,6 +22,19 @@ if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
   exit 1
 fi
 KCTL=(kubectl --context "${CONTEXT}")
+
+echo "==> Available StorageClasses on ${CONTEXT}"
+"${KCTL[@]}" get storageclass
+echo
+read -r -p "StorageClass to use for the ai-demo PVCs: " STORAGE_CLASS
+if [[ -z "${STORAGE_CLASS}" ]]; then
+  echo "A storage class is required."
+  exit 1
+fi
+if ! "${KCTL[@]}" get storageclass "${STORAGE_CLASS}" >/dev/null 2>&1; then
+  echo "StorageClass '${STORAGE_CLASS}' not found on ${CONTEXT}."
+  exit 1
+fi
 
 echo "==> Creating namespace"
 "${KCTL[@]}" apply -f manifests/namespace.yaml
@@ -66,17 +80,23 @@ fi
   --from-literal=WEBUI_ADMIN_PASSWORD="${WEBUI_ADMIN_PASSWORD}" \
   --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
 
-echo "==> Deploying Postgres + pgvector"
-"${KCTL[@]}" apply -f postgres/pvc.yaml
+echo "==> Deploying Postgres + pgvector (StorageClass: ${STORAGE_CLASS})"
+PVC_YAML=$(mktemp)
+sed "s/storageClassName: sc-prod/storageClassName: ${STORAGE_CLASS}/" postgres/pvc.yaml > "${PVC_YAML}"
+"${KCTL[@]}" apply -f "${PVC_YAML}"
+rm -f "${PVC_YAML}"
 "${KCTL[@]}" apply -f postgres/deployment.yaml
 "${KCTL[@]}" apply -f postgres/service.yaml
 "${KCTL[@]}" rollout status deployment/postgres -n ai-demo --timeout=180s
 
-echo "==> Deploying Open WebUI + Ollama via Helm"
+echo "==> Deploying Open WebUI + Ollama via Helm (StorageClass: ${STORAGE_CLASS})"
 helm repo add open-webui https://helm.openwebui.com/ >/dev/null 2>&1 || true
 helm repo update open-webui >/dev/null
 helm --kube-context "${CONTEXT}" upgrade --install ai-demo open-webui/open-webui \
-  -n ai-demo -f charts/values-open-webui-cluster1.yaml --wait --timeout 10m
+  -n ai-demo -f charts/values-open-webui-cluster1.yaml \
+  --set-string persistence.storageClass="${STORAGE_CLASS}" \
+  --set-string ollama.persistentVolume.storageClass="${STORAGE_CLASS}" \
+  --wait --timeout 10m
 
 echo "==> Running init job (model pull + knowledge base upload)"
 KB_ARGS=()
