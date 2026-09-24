@@ -70,24 +70,21 @@ endpoint) reachable from both clusters for Kasten backup/export.
 
 This walks through, in order: listing the cluster's StorageClasses and asking which one to use
 for the PVCs, creating the namespace, prompting for and creating the PostgreSQL/Open WebUI/S3
-credentials as Kubernetes Secrets, deploying PostgreSQL, installing the `open-webui` Helm chart
-(with the `ollama` sub-chart) from `charts/values-open-webui-cluster1.yaml`, running the init
-Job to pull the model and load `kb/`, then applying the hourly backup+export Policy. For the
+credentials as Kubernetes Secrets, deploying PostgreSQL, asking how to expose Open WebUI
+(LoadBalancer, Ingress via nginx, Ingress via Traefik, or none, whatever the cluster actually
+has, nothing is assumed), installing the `open-webui` Helm chart (with the `ollama` sub-chart)
+from `charts/values-open-webui-cluster1.yaml` with that choice applied, running the init Job
+to pull the model and load `kb/`, then applying the hourly backup+export Policy. For the
 Location Profile, the PostgreSQL Blueprint/Binding, and the TransformSet, the script asks
 separately whether to create each one itself or leave it to you to apply manually, in case
 you'd rather set them up by hand or already have them from a previous run.
 
+At the end, the script prints the URL to open Open WebUI in a browser: the LoadBalancer address
+once one is assigned, the Ingress hostname you gave it, or a `port-forward` command if you chose
+to expose it yourself.
+
 To tear it down: `./scripts/teardown-cluster1.sh [kube-context]` (keeps the S3 profile and
 credentials, since cluster2 still needs them for DR import).
-
-Open WebUI's Service is `LoadBalancer` type, so once the cluster's LB implementation (MetalLB
-on-prem, a cloud LB otherwise) assigns it an address, get it with:
-
-```bash
-kubectl get svc ai-demo-open-webui -n ai-demo
-```
-
-and open `http://<EXTERNAL-IP>` in a browser.
 
 ### Preparing cluster2 (DR side)
 

@@ -89,6 +89,42 @@ rm -f "${PVC_YAML}"
 "${KCTL[@]}" apply -f postgres/service.yaml
 "${KCTL[@]}" rollout status deployment/postgres -n ai-demo --timeout=180s
 
+echo "==> How should Open WebUI be exposed for browser access?"
+echo "  1) LoadBalancer (MetalLB, or a cloud LB, whatever the cluster provides)"
+echo "  2) Ingress via an nginx ingress controller"
+echo "  3) Ingress via Traefik"
+echo "  4) None, I will handle exposure myself (stays ClusterIP)"
+read -r -p "Choice [1-4]: " EXPOSE_CHOICE
+
+EXPOSE_ARGS=()
+ACCESS_MODE="manual"
+INGRESS_HOST=""
+case "${EXPOSE_CHOICE}" in
+  1)
+    ACCESS_MODE="loadbalancer"
+    EXPOSE_ARGS+=(--set-string service.type=LoadBalancer)
+    ;;
+  2|3)
+    ACCESS_MODE="ingress"
+    INGRESS_CLASS="nginx"
+    [[ "${EXPOSE_CHOICE}" == "3" ]] && INGRESS_CLASS="traefik"
+    read -r -p "Ingress hostname (must resolve to this cluster's ingress controller): " INGRESS_HOST
+    if [[ -z "${INGRESS_HOST}" ]]; then
+      echo "An ingress hostname is required for this option."
+      exit 1
+    fi
+    EXPOSE_ARGS+=(
+      --set ingress.enabled=true
+      --set-string ingress.class="${INGRESS_CLASS}"
+      --set-string ingress.host="${INGRESS_HOST}"
+    )
+    ;;
+  *)
+    ACCESS_MODE="manual"
+    echo "Skipping automatic exposure, Open WebUI stays ClusterIP, expose it however you like."
+    ;;
+esac
+
 echo "==> Deploying Open WebUI + Ollama via Helm (StorageClass: ${STORAGE_CLASS})"
 helm repo add open-webui https://helm.openwebui.com/ >/dev/null 2>&1 || true
 helm repo update open-webui >/dev/null
@@ -96,6 +132,7 @@ helm --kube-context "${CONTEXT}" upgrade --install ai-demo open-webui/open-webui
   -n ai-demo -f charts/values-open-webui-cluster1.yaml \
   --set-string persistence.storageClass="${STORAGE_CLASS}" \
   --set-string ollama.persistentVolume.storageClass="${STORAGE_CLASS}" \
+  "${EXPOSE_ARGS[@]}" \
   --wait --timeout 10m
 
 echo "==> Running init job (model pull + knowledge base upload)"
@@ -170,3 +207,35 @@ fi
 
 echo "==> Done. ai-demo namespace is up on cluster1, hourly backup+export policy is active."
 echo "    Remember cluster2 needs the same Location Profile and the TransformSet before the DR demo."
+
+echo
+echo "==> Open WebUI access"
+case "${ACCESS_MODE}" in
+  loadbalancer)
+    echo -n "Waiting for a LoadBalancer address"
+    LB_ADDR=""
+    for _ in $(seq 1 30); do
+      LB_ADDR=$("${KCTL[@]}" get svc ai-demo-open-webui -n ai-demo \
+        -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
+      [[ -n "${LB_ADDR}" ]] && break
+      echo -n "."
+      sleep 5
+    done
+    echo
+    if [[ -n "${LB_ADDR}" ]]; then
+      echo "Open WebUI: http://${LB_ADDR}"
+    else
+      echo "No address assigned yet, check later with:"
+      echo "  kubectl --context ${CONTEXT} -n ai-demo get svc ai-demo-open-webui"
+    fi
+    ;;
+  ingress)
+    echo "Open WebUI: http://${INGRESS_HOST}"
+    echo "(make sure that hostname actually resolves to this cluster's ingress controller)"
+    ;;
+  manual)
+    echo "Open WebUI has no external access configured. Reach it with:"
+    echo "  kubectl --context ${CONTEXT} -n ai-demo port-forward svc/ai-demo-open-webui 8080:80"
+    echo "  then open http://localhost:8080"
+    ;;
+esac

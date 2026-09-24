@@ -37,10 +37,9 @@ persistence:
   size: 2Gi
   storageClass: sc-prod
 
-# LoadBalancer so the demo UI gets a routable IP straight from the cluster's LB implementation
-# (MetalLB on-prem, a cloud LB otherwise) instead of needing kubectl port-forward.
-service:
-  type: LoadBalancer
+# How Open WebUI is exposed (LoadBalancer, Ingress via nginx/Traefik, or left ClusterIP) is
+# chosen interactively by scripts/deploy-cluster1.sh and passed in as --set-string overrides,
+# not hardcoded here, since it depends on what the target cluster actually has available.
 
 # Disable Open WebUI's bundled Postgres/pgvector if the chart offers one, we run our own
 # pgvector instance under postgres/ so both apps share a single, backed-up database.
