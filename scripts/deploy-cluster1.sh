@@ -104,7 +104,13 @@ echo "  1) LoadBalancer (MetalLB, or a cloud LB, whatever the cluster provides)"
 echo "  2) Ingress via an nginx ingress controller"
 echo "  3) Ingress via Traefik"
 echo "  4) None, I will handle exposure myself (stays ClusterIP)"
-read -r -p "${C_PROMPT}Choice [1-4]: ${C_RESET}" EXPOSE_CHOICE
+while true; do
+  read -r -p "${C_PROMPT}Choice [1-4]: ${C_RESET}" EXPOSE_CHOICE
+  case "${EXPOSE_CHOICE}" in
+    1|2|3|4) break ;;
+    *) echo "Please enter 1, 2, 3, or 4." ;;
+  esac
+done
 
 EXPOSE_ARGS=()
 ACCESS_MODE="manual"
@@ -138,11 +144,14 @@ esac
 echo "==> Deploying Open WebUI + Ollama via Helm (StorageClass: ${STORAGE_CLASS})"
 helm repo add open-webui https://helm.openwebui.com/ >/dev/null 2>&1 || true
 helm repo update open-webui >/dev/null
+# The ${arr[@]+"${arr[@]}"} form (not just "${arr[@]}") is required here: macOS ships
+# bash 3.2 by default, and under `set -u` bash <4.4 treats expanding an EMPTY array with
+# [@] as an unbound variable error, which it isn't in bash 4.4+.
 helm --kube-context "${CONTEXT}" upgrade --install ai-demo open-webui/open-webui \
   -n ai-demo -f charts/values-open-webui-cluster1.yaml \
   --set-string persistence.storageClass="${STORAGE_CLASS}" \
   --set-string ollama.persistentVolume.storageClass="${STORAGE_CLASS}" \
-  "${EXPOSE_ARGS[@]}" \
+  "${EXPOSE_ARGS[@]+"${EXPOSE_ARGS[@]}"}" \
   --wait --timeout 10m
 
 echo "==> Running init job (model pull + knowledge base upload)"
@@ -151,7 +160,7 @@ for f in kb/*; do
   [[ "$(basename "$f")" == "README.md" ]] && continue
   KB_ARGS+=(--from-file="$f")
 done
-"${KCTL[@]}" create configmap ai-demo-kb-files -n ai-demo "${KB_ARGS[@]}" \
+"${KCTL[@]}" create configmap ai-demo-kb-files -n ai-demo "${KB_ARGS[@]+"${KB_ARGS[@]}"}" \
   --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
 "${KCTL[@]}" create configmap ai-demo-init-script -n ai-demo --from-file=init/init.py \
   --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
