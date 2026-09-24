@@ -91,13 +91,15 @@ echo "==> Deploying the classify-app (StorageClass: ${STORAGE_CLASS})"
 read -r -p "${C_PROMPT}Image tag to deploy [latest]: ${C_RESET}" IMAGE_TAG
 IMAGE_TAG="${IMAGE_TAG:-latest}"
 
-IMAGES_PVC_YAML=$(mktemp)
-sed "s/storageClassName: sc-prod/storageClassName: ${STORAGE_CLASS}/" classify-app/pvc-images.yaml > "${IMAGES_PVC_YAML}"
-"${KCTL[@]}" apply -f "${IMAGES_PVC_YAML}"
-rm -f "${IMAGES_PVC_YAML}"
+for pvc in pvc-images.yaml pvc-model.yaml pvc-weights.yaml; do
+  PVC_TMP=$(mktemp)
+  sed "s/storageClassName: sc-prod/storageClassName: ${STORAGE_CLASS}/" "classify-app/${pvc}" > "${PVC_TMP}"
+  "${KCTL[@]}" apply -f "${PVC_TMP}"
+  rm -f "${PVC_TMP}"
+done
 
 DEPLOYMENT_YAML=$(mktemp)
-sed "s#image: docker.io/cpouthier/ai-image-classify:latest#image: docker.io/cpouthier/ai-image-classify:${IMAGE_TAG}#" \
+sed "s#image: docker.io/cpouthier/ai-image-classify:latest#image: docker.io/cpouthier/ai-image-classify:${IMAGE_TAG}#g" \
   classify-app/deployment.yaml > "${DEPLOYMENT_YAML}"
 "${KCTL[@]}" apply -f "${DEPLOYMENT_YAML}"
 rm -f "${DEPLOYMENT_YAML}"

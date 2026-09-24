@@ -19,7 +19,20 @@ Namespace `ai-demo` on cluster1:
 | `classify-app` | FastAPI backend (ONNX Runtime, MobileNetV3-Small/ImageNet) + a one-page frontend | PVC `images-data`, 5Gi |
 | PostgreSQL | Stores classification results | PVC `postgres-data`, 5Gi |
 
-Both PVCs use `sc-prod` on cluster1 and `sc-dr` on cluster2 (the two Puls8 replicated
+The ONNX model itself is split across two more PVCs instead of only living inside the image,
+on purpose, to make the point during the demo that a trained model and its weights are just as
+important to back up as the database:
+
+| PVC | Holds | Size |
+|---|---|---|
+| `ai-model` | The ONNX model graph (`model.onnx`) | 100Mi |
+| `ai-trained-weight` | The model's trained weights (`model.onnx.data`) | 200Mi |
+
+An initContainer on `classify-app` seeds both from the copy baked into the image the first time
+a pod starts (a no-op afterward), so they exist as real, backed-up cluster data rather than
+something that just comes back for free whenever the image is pulled.
+
+All four PVCs use `sc-prod` on cluster1 and `sc-dr` on cluster2 (the two Puls8 replicated
 StorageClasses). Every pod tolerates `node.kubernetes.io/not-ready` and
 `node.kubernetes.io/unreachable` for only 30 seconds, so a node failure gets pods rescheduled
 quickly during the BC demo instead of waiting on Kubernetes' 5 minute default.
@@ -71,7 +84,7 @@ image at build time, the running container never depends on torch or the interne
 | `Dockerfile` | Multi-stage build: exports the ONNX model, then a slim onnxruntime runtime image |
 | `manifests/` | Namespace |
 | `postgres/` | PostgreSQL Deployment, Service, PVC, credential Secret template |
-| `classify-app/` | `classify-app` PVC, Deployment, Service, Ingress template |
+| `classify-app/` | `classify-app` PVCs (images, model, weights), Deployment, Service, Ingress template |
 | `kasten/` | Location Profile, Policy, PostgreSQL Blueprint/Binding, TransformSet |
 | `scripts/` | `deploy-cluster1.sh`, `teardown-cluster1.sh`, `demo-bc.sh`, `demo-dr.sh`, `build-image.sh` |
 | `samples/` | A few synthetic placeholder images for exercising the upload pipeline |

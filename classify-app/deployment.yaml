@@ -24,6 +24,30 @@ spec:
           operator: Exists
           effect: NoExecute
           tolerationSeconds: 30
+      initContainers:
+        # Seeds ai-model / ai-trained-weight from the copy of the model baked into this same
+        # image, only on first boot (no-op once the PVCs already hold the files). This is what
+        # makes the model graph and its trained weights persistent, backed-up data instead of
+        # something that just comes back for free every time the image is pulled.
+        - name: seed-model
+          image: docker.io/cpouthier/ai-image-classify:latest
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              if [ ! -f /models/model/model.onnx ]; then
+                cp /app/model.onnx /models/model/model.onnx
+              fi
+              if [ ! -f /models/weight/model.onnx.data ]; then
+                cp /app/model.onnx.data /models/weight/model.onnx.data
+              fi
+              cp /models/weight/model.onnx.data /models/model/model.onnx.data
+          volumeMounts:
+            - name: ai-model
+              mountPath: /models/model
+            - name: ai-trained-weight
+              mountPath: /models/weight
       containers:
         - name: classify-app
           image: docker.io/cpouthier/ai-image-classify:latest
@@ -33,6 +57,8 @@ spec:
           env:
             - name: IMAGES_DIR
               value: /data/images
+            - name: MODEL_DIR
+              value: /models/model
             - name: POSTGRES_HOST
               value: postgres
             - name: POD_NAME
@@ -61,6 +87,8 @@ spec:
           volumeMounts:
             - name: images-data
               mountPath: /data/images
+            - name: ai-model
+              mountPath: /models/model
           readinessProbe:
             httpGet:
               path: /healthz
@@ -77,3 +105,9 @@ spec:
         - name: images-data
           persistentVolumeClaim:
             claimName: images-data
+        - name: ai-model
+          persistentVolumeClaim:
+            claimName: ai-model
+        - name: ai-trained-weight
+          persistentVolumeClaim:
+            claimName: ai-trained-weight

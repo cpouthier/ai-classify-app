@@ -1,8 +1,14 @@
+import os
+
 import numpy as np
 import onnxruntime
 from PIL import Image
 
-MODEL_PATH = "/app/model.onnx"
+# The model graph and its trained weights live on their own PVCs (ai-model, ai-trained-weight),
+# not baked into the image, an initContainer seeds them from the image on first boot. This is
+# meant to be visible in the demo: these files are as important to back up as the database.
+MODEL_DIR = os.environ.get("MODEL_DIR", "/models/model")
+MODEL_PATH = f"{MODEL_DIR}/model.onnx"
 LABELS_PATH = "/app/labels.txt"
 
 _IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
