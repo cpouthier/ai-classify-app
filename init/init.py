@@ -5,10 +5,11 @@ collection in Open WebUI and uploads every file found under /kb into it.
 Uses only the Python standard library (urllib) on purpose, so the Job can run on the plain
 python:3-alpine multi-arch image with no custom image build required.
 
-Open WebUI's REST API has changed shape across releases. The endpoints below match the
-/api/v1/auths and /api/v1/knowledge routes used by recent Open WebUI versions. If your
-deployed version differs, check <OPENWEBUI_URL>/docs (Swagger UI) and adjust the paths
-in upload_document() / create_knowledge_collection() accordingly.
+Open WebUI's REST API has changed shape across releases (file upload used to live at
+/api/v1/documents/doc/upload, it is now plain POST /api/v1/files/, for example). The paths
+below were verified against the routers actually installed in open-webui:16.6.0 / app 0.11.4
+(`kubectl exec <pod> -- grep -rn '@router' open_webui/routers/{files,knowledge,auths}.py`).
+If you're on a different version, re-check the same way before trusting these paths again.
 """
 
 import json
@@ -107,8 +108,8 @@ def create_knowledge_collection(token):
         if exc.code != 400:
             raise
         print("Knowledge collection already exists, listing to find its id.")
-        collections = http_json("GET", f"{OPENWEBUI_URL}/api/v1/knowledge/list", token=token)
-        for coll in collections:
+        collections = http_json("GET", f"{OPENWEBUI_URL}/api/v1/knowledge/", token=token)
+        for coll in collections["items"]:
             if coll["name"] == KB_NAME:
                 return coll["id"]
         raise SystemExit(f"Could not find or create knowledge collection {KB_NAME}")
@@ -131,7 +132,7 @@ def upload_document(token, path):
         content = fh.read()
     body, boundary = encode_multipart("file", filename, content, content_type)
     req = urllib.request.Request(
-        f"{OPENWEBUI_URL}/api/v1/documents/doc/upload", data=body, method="POST"
+        f"{OPENWEBUI_URL}/api/v1/files/", data=body, method="POST"
     )
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
