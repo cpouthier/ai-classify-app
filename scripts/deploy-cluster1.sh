@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Deploy the Puls8 RAG demo stack (Postgres+pgvector, Ollama, Open WebUI) plus the Kasten
-# location profile, policy, and PostgreSQL blueprint on cluster1 (the production side of the
-# BC/DR demo). Lists available StorageClasses and asks which one to use for the PVCs, so it
-# is not tied to a hardcoded sc-prod name.
+# Deploy the Puls8 image classification demo (FastAPI + ONNX MobileNetV3, PostgreSQL) plus the
+# Kasten location profile, policy, and PostgreSQL blueprint on cluster1 (the production side of
+# the BC/DR demo). Lists available StorageClasses and asks which one to use for the PVCs, and
+# asks how to expose the app (LoadBalancer, Ingress, or manual), so nothing is tied to a
+# specific cluster or ingress controller.
 #
 # Usage: ./scripts/deploy-cluster1.sh [kube-context]
 #
-# Run from the repository root. Requires: kubectl, helm, a kube-context already pointing at
-# cluster1 (or pass it as the first argument).
+# Run from the repository root. Requires: kubectl, a kube-context already pointing at cluster1
+# (or pass it as the first argument), and the classify-app image already pushed (see
+# scripts/build-image.sh) if you are not using the default docker.io/cpouthier image.
 
 set -euo pipefail
 
@@ -50,10 +52,10 @@ echo "==> Creating namespace"
 "${KCTL[@]}" apply -f manifests/namespace.yaml
 
 echo "==> Postgres credentials"
-read -r -p "${C_PROMPT}Postgres username [ai_demo]: ${C_RESET}" PG_USER
-PG_USER="${PG_USER:-ai_demo}"
-read -r -p "${C_PROMPT}Postgres database name [ai_demo]: ${C_RESET}" PG_DB
-PG_DB="${PG_DB:-ai_demo}"
+read -r -p "${C_PROMPT}Postgres username [classify]: ${C_RESET}" PG_USER
+PG_USER="${PG_USER:-classify}"
+read -r -p "${C_PROMPT}Postgres database name [classify]: ${C_RESET}" PG_DB
+PG_DB="${PG_DB:-classify}"
 read -r -s -p "${C_PROMPT}Postgres password: ${C_RESET}" PG_PASSWORD
 echo
 if [[ -z "${PG_PASSWORD}" ]]; then
@@ -68,29 +70,15 @@ fi
   --from-literal=POSTGRES_DB="${PG_DB}" \
   --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
 
-DB_URL="postgresql://${PG_USER}:${PG_PASSWORD}@postgres.ai-demo.svc.cluster.local:5432/${PG_DB}"
-"${KCTL[@]}" create secret generic webui-db-credentials \
+echo "==> Cluster identity"
+read -r -p "${C_PROMPT}Display name for this cluster (shown in the app banner) [Cluster1 - Production]: ${C_RESET}" CLUSTER_NAME
+CLUSTER_NAME="${CLUSTER_NAME:-Cluster1 - Production}"
+"${KCTL[@]}" create configmap cluster-config \
   -n ai-demo \
-  --from-literal=DATABASE_URL="${DB_URL}" \
-  --from-literal=PGVECTOR_DB_URL="${DB_URL}" \
+  --from-literal=CLUSTER_NAME="${CLUSTER_NAME}" \
   --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
 
-echo "==> Open WebUI admin account"
-read -r -p "${C_PROMPT}Open WebUI admin email: ${C_RESET}" WEBUI_ADMIN_EMAIL
-read -r -s -p "${C_PROMPT}Open WebUI admin password: ${C_RESET}" WEBUI_ADMIN_PASSWORD
-echo
-if [[ -z "${WEBUI_ADMIN_EMAIL}" || -z "${WEBUI_ADMIN_PASSWORD}" ]]; then
-  echo "Admin email and password are required."
-  exit 1
-fi
-
-"${KCTL[@]}" create secret generic webui-admin-credentials \
-  -n ai-demo \
-  --from-literal=WEBUI_ADMIN_EMAIL="${WEBUI_ADMIN_EMAIL}" \
-  --from-literal=WEBUI_ADMIN_PASSWORD="${WEBUI_ADMIN_PASSWORD}" \
-  --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
-
-echo "==> Deploying Postgres + pgvector (StorageClass: ${STORAGE_CLASS})"
+echo "==> Deploying Postgres (StorageClass: ${STORAGE_CLASS})"
 PVC_YAML=$(mktemp)
 sed "s/storageClassName: sc-prod/storageClassName: ${STORAGE_CLASS}/" postgres/pvc.yaml > "${PVC_YAML}"
 "${KCTL[@]}" apply -f "${PVC_YAML}"
@@ -99,7 +87,24 @@ rm -f "${PVC_YAML}"
 "${KCTL[@]}" apply -f postgres/service.yaml
 "${KCTL[@]}" rollout status deployment/postgres -n ai-demo --timeout=180s
 
-echo "==> How should Open WebUI be exposed for browser access?"
+echo "==> Deploying the classify-app (StorageClass: ${STORAGE_CLASS})"
+read -r -p "${C_PROMPT}Image tag to deploy [latest]: ${C_RESET}" IMAGE_TAG
+IMAGE_TAG="${IMAGE_TAG:-latest}"
+
+IMAGES_PVC_YAML=$(mktemp)
+sed "s/storageClassName: sc-prod/storageClassName: ${STORAGE_CLASS}/" classify-app/pvc-images.yaml > "${IMAGES_PVC_YAML}"
+"${KCTL[@]}" apply -f "${IMAGES_PVC_YAML}"
+rm -f "${IMAGES_PVC_YAML}"
+
+DEPLOYMENT_YAML=$(mktemp)
+sed "s#image: docker.io/cpouthier/ai-image-classify:latest#image: docker.io/cpouthier/ai-image-classify:${IMAGE_TAG}#" \
+  classify-app/deployment.yaml > "${DEPLOYMENT_YAML}"
+"${KCTL[@]}" apply -f "${DEPLOYMENT_YAML}"
+rm -f "${DEPLOYMENT_YAML}"
+
+"${KCTL[@]}" apply -f classify-app/service.yaml
+
+echo "==> How should the classify-app be exposed for browser access?"
 echo "  1) LoadBalancer (MetalLB, or a cloud LB, whatever the cluster provides)"
 echo "  2) Ingress via an nginx ingress controller"
 echo "  3) Ingress via Traefik"
@@ -112,13 +117,12 @@ while true; do
   esac
 done
 
-EXPOSE_ARGS=()
 ACCESS_MODE="manual"
 INGRESS_HOST=""
 case "${EXPOSE_CHOICE}" in
   1)
     ACCESS_MODE="loadbalancer"
-    EXPOSE_ARGS+=(--set-string service.type=LoadBalancer)
+    "${KCTL[@]}" patch service classify-app -n ai-demo -p '{"spec":{"type":"LoadBalancer"}}'
     ;;
   2|3)
     ACCESS_MODE="ingress"
@@ -129,44 +133,21 @@ case "${EXPOSE_CHOICE}" in
       echo "An ingress hostname is required for this option."
       exit 1
     fi
-    EXPOSE_ARGS+=(
-      --set ingress.enabled=true
-      --set-string ingress.class="${INGRESS_CLASS}"
-      --set-string ingress.host="${INGRESS_HOST}"
-    )
+    INGRESS_YAML=$(mktemp)
+    sed \
+      -e "s/REPLACE_ME_CLASS/${INGRESS_CLASS}/" \
+      -e "s/REPLACE_ME_HOST/${INGRESS_HOST}/" \
+      classify-app/ingress.yaml.tpl > "${INGRESS_YAML}"
+    "${KCTL[@]}" apply -f "${INGRESS_YAML}"
+    rm -f "${INGRESS_YAML}"
     ;;
   *)
     ACCESS_MODE="manual"
-    echo "Skipping automatic exposure, Open WebUI stays ClusterIP, expose it however you like."
+    echo "Skipping automatic exposure, the classify-app stays ClusterIP, expose it however you like."
     ;;
 esac
 
-echo "==> Deploying Open WebUI + Ollama via Helm (StorageClass: ${STORAGE_CLASS})"
-helm repo add open-webui https://helm.openwebui.com/ >/dev/null 2>&1 || true
-helm repo update open-webui >/dev/null
-# The ${arr[@]+"${arr[@]}"} form (not just "${arr[@]}") is required here: macOS ships
-# bash 3.2 by default, and under `set -u` bash <4.4 treats expanding an EMPTY array with
-# [@] as an unbound variable error, which it isn't in bash 4.4+.
-helm --kube-context "${CONTEXT}" upgrade --install ai-demo open-webui/open-webui \
-  -n ai-demo -f charts/values-open-webui-cluster1.yaml \
-  --set-string persistence.storageClass="${STORAGE_CLASS}" \
-  --set-string ollama.persistentVolume.storageClass="${STORAGE_CLASS}" \
-  "${EXPOSE_ARGS[@]+"${EXPOSE_ARGS[@]}"}" \
-  --wait --timeout 10m
-
-echo "==> Running init job (model pull + knowledge base upload)"
-KB_ARGS=()
-for f in kb/*; do
-  [[ "$(basename "$f")" == "README.md" ]] && continue
-  KB_ARGS+=(--from-file="$f")
-done
-"${KCTL[@]}" create configmap ai-demo-kb-files -n ai-demo "${KB_ARGS[@]+"${KB_ARGS[@]}"}" \
-  --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
-"${KCTL[@]}" create configmap ai-demo-init-script -n ai-demo --from-file=init/init.py \
-  --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
-"${KCTL[@]}" delete job ai-demo-init -n ai-demo --ignore-not-found
-"${KCTL[@]}" apply -f init/job-init.yaml
-"${KCTL[@]}" wait --for=condition=complete job/ai-demo-init -n ai-demo --timeout=1800s
+"${KCTL[@]}" rollout status deployment/classify-app -n ai-demo --timeout=180s
 
 echo "==> Kasten: S3 location profile"
 read -r -p "${C_WARN}Create the Kasten Location Profile now via this script? [y/N] ${C_RESET}" CREATE_PROFILE
@@ -203,6 +184,8 @@ fi
 
 echo "==> Kasten: hourly backup + export policy"
 "${KCTL[@]}" apply -f kasten/policy.yaml
+echo "(An on-demand run is always available too: trigger a RunAction against this Policy,"
+echo " or use the Veeam Kasten dashboard's \"Run Once\" button on the ai-demo application.)"
 
 echo "==> Kasten: PostgreSQL blueprint"
 read -r -p "${C_WARN}Create the PostgreSQL Blueprint and BlueprintBinding now via this script? [y/N] ${C_RESET}" CREATE_BLUEPRINT
@@ -217,7 +200,12 @@ fi
 echo "==> Kasten: sc-prod-to-sc-dr TransformSet"
 read -r -p "${C_WARN}Create the TransformSet now via this script? [y/N] ${C_RESET}" CREATE_TRANSFORMSET
 if [[ "${CREATE_TRANSFORMSET}" == "y" || "${CREATE_TRANSFORMSET}" == "Y" ]]; then
-  "${KCTL[@]}" apply -f kasten/transformset.yaml
+  read -r -p "${C_PROMPT}Display name cluster2 should show after a DR restore [Cluster2 - DR]: ${C_RESET}" DR_CLUSTER_NAME
+  DR_CLUSTER_NAME="${DR_CLUSTER_NAME:-Cluster2 - DR}"
+  TRANSFORMSET_YAML=$(mktemp)
+  sed "s/REPLACE_ME_DR_CLUSTER_NAME/${DR_CLUSTER_NAME}/" kasten/transformset.yaml > "${TRANSFORMSET_YAML}"
+  "${KCTL[@]}" apply -f "${TRANSFORMSET_YAML}"
+  rm -f "${TRANSFORMSET_YAML}"
   echo "Note: this TransformSet only takes effect during the DR restore on cluster2,"
   echo "applying it here just stages it, it also needs to exist on cluster2 for demo-dr.sh."
 else
@@ -228,13 +216,13 @@ echo "==> Done. ai-demo namespace is up on cluster1, hourly backup+export policy
 echo "    Remember cluster2 needs the same Location Profile and the TransformSet before the DR demo."
 
 echo
-echo "==> Open WebUI access"
+echo "==> classify-app access"
 case "${ACCESS_MODE}" in
   loadbalancer)
     echo -n "Waiting for a LoadBalancer address"
     LB_ADDR=""
     for _ in $(seq 1 30); do
-      LB_ADDR=$("${KCTL[@]}" get svc ai-demo-open-webui -n ai-demo \
+      LB_ADDR=$("${KCTL[@]}" get svc classify-app -n ai-demo \
         -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null)
       [[ -n "${LB_ADDR}" ]] && break
       echo -n "."
@@ -242,19 +230,19 @@ case "${ACCESS_MODE}" in
     done
     echo
     if [[ -n "${LB_ADDR}" ]]; then
-      echo "Open WebUI: http://${LB_ADDR}"
+      echo "classify-app: http://${LB_ADDR}"
     else
       echo "No address assigned yet, check later with:"
-      echo "  kubectl --context ${CONTEXT} -n ai-demo get svc ai-demo-open-webui"
+      echo "  kubectl --context ${CONTEXT} -n ai-demo get svc classify-app"
     fi
     ;;
   ingress)
-    echo "Open WebUI: http://${INGRESS_HOST}"
+    echo "classify-app: http://${INGRESS_HOST}"
     echo "(make sure that hostname actually resolves to this cluster's ingress controller)"
     ;;
   manual)
-    echo "Open WebUI has no external access configured. Reach it with:"
-    echo "  kubectl --context ${CONTEXT} -n ai-demo port-forward svc/ai-demo-open-webui 8080:80"
+    echo "classify-app has no external access configured. Reach it with:"
+    echo "  kubectl --context ${CONTEXT} -n ai-demo port-forward svc/classify-app 8080:80"
     echo "  then open http://localhost:8080"
     ;;
 esac

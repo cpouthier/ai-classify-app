@@ -12,7 +12,7 @@
 #
 # NOTE ON ACTION CRD FIELDS: the ImportAction/RestoreAction shapes below reflect Kasten's
 # generally documented action pattern (profile-based import, RestorePoint subject +
-# transformSets). Field names have shifted slightly across K10 releases, before running this
+# transformSets). Field names have shifted slightly across Veeam Kasten releases, before running this
 # against a new environment for the first time, sanity check with:
 #   kubectl explain importaction.spec --recursive
 #   kubectl explain restoreaction.spec --recursive

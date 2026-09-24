@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: classify-app
+  namespace: ai-demo
+  labels:
+    app: classify-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: classify-app
+  template:
+    metadata:
+      labels:
+        app: classify-app
+    spec:
+      tolerations:
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+      containers:
+        - name: classify-app
+          image: docker.io/cpouthier/ai-image-classify:latest
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: IMAGES_DIR
+              value: /data/images
+            - name: POSTGRES_HOST
+              value: postgres
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: CLUSTER_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: cluster-config
+                  key: CLUSTER_NAME
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: images-data
+              mountPath: /data/images
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      volumes:
+        - name: images-data
+          persistentVolumeClaim:
+            claimName: images-data

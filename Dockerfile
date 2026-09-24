@@ -1,0 +1,46 @@
+# Stage 1: export the pretrained MobileNetV3-Small (ImageNet) weights to ONNX, plus the
+# exact category label order that model was trained with. Kept as a separate stage so the
+# heavy torch/torchvision toolchain never ends up in the runtime image.
+FROM python:3.11-slim AS model-export
+
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+RUN python - <<'PY'
+import torch
+from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+
+weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
+model = mobilenet_v3_small(weights=weights)
+model.eval()
+
+dummy_input = torch.randn(1, 3, 224, 224)
+torch.onnx.export(
+    model,
+    dummy_input,
+    "/model.onnx",
+    input_names=["input"],
+    output_names=["output"],
+    dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}},
+    opset_version=17,
+)
+
+with open("/labels.txt", "w") as f:
+    f.write("\n".join(weights.meta["categories"]))
+PY
+
+# Stage 2: slim runtime image, CPU-only inference via onnxruntime.
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY --from=model-export /model.onnx /app/model.onnx
+COPY --from=model-export /labels.txt /app/labels.txt
+
+COPY app/ /app/
+COPY frontend/ /app/frontend/
+
+EXPOSE 8000
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

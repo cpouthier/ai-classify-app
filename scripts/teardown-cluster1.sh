@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Remove everything scripts/deploy-cluster1.sh installed: the ai-demo namespace and its Helm
-# release, and the Kasten policy/blueprint/binding/profile created for the demo.
+# Remove everything scripts/deploy-cluster1.sh installed: the ai-demo namespace and the Kasten
+# policy/blueprint/binding created for the demo.
 #
 # Usage: ./scripts/teardown-cluster1.sh [kube-context]
 # Does NOT delete the S3 bucket contents or the ai-demo-s3-creds secret, since those may still
@@ -21,7 +21,7 @@ cd "$REPO_ROOT"
 
 CONTEXT="${1:-$(kubectl config current-context)}"
 echo "Using kube-context: ${CONTEXT}"
-read -r -p "${C_WARN}This deletes the ai-demo namespace and its Helm release on this cluster. Continue? [y/N] ${C_RESET}" confirm
+read -r -p "${C_WARN}This deletes the ai-demo namespace on this cluster. Continue? [y/N] ${C_RESET}" confirm
 if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
   echo "Aborted."
   exit 1
@@ -32,9 +32,6 @@ echo "==> Removing Kasten policy, blueprint binding, and blueprint"
 "${KCTL[@]}" delete -f kasten/policy.yaml --ignore-not-found
 "${KCTL[@]}" delete -f kasten/blueprintbinding-postgres.yaml --ignore-not-found
 "${KCTL[@]}" delete -f kasten/blueprint-postgres.yaml --ignore-not-found
-
-echo "==> Uninstalling Helm release"
-helm --kube-context "${CONTEXT}" uninstall ai-demo -n ai-demo --ignore-not-found || true
 
 echo "==> Deleting ai-demo namespace"
 "${KCTL[@]}" delete namespace ai-demo --ignore-not-found
