@@ -92,6 +92,7 @@
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("fileInput");
   const grid = document.getElementById("grid");
+  let lastResultsKey = null;
 
   dropzone.addEventListener("click", () => fileInput.click());
   fileInput.addEventListener("change", () => uploadFiles(fileInput.files));
@@ -161,8 +162,12 @@
       document.getElementById("totalImages").textContent = meta.total_images;
       document.getElementById("lastSequenceId").textContent = meta.last_sequence_id;
 
-      grid.innerHTML = "";
-      for (const row of results) grid.appendChild(renderCard(row));
+      const resultsKey = results.map((row) => row.sequence_id).join(",");
+      if (resultsKey !== lastResultsKey) {
+        lastResultsKey = resultsKey;
+        grid.innerHTML = "";
+        for (const row of results) grid.appendChild(renderCard(row));
+      }
     } catch (err) {
       console.error("refresh failed", err);
     }
