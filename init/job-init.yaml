@@ -1,6 +1,8 @@
 # Assumes the chart was installed with `helm install ai-demo open-webui/open-webui ...`
 # (release name "ai-demo"), which names the services ai-demo-ollama and ai-demo-open-webui.
 # Adjust OLLAMA_URL / OPENWEBUI_URL below if you used a different release name.
+# OPENWEBUI_URL uses port 80, that's the open-webui chart's Service port (confirmed against
+# chart version open-webui-16.6.0 / app v0.11.4), not 8080.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -31,7 +33,7 @@ spec:
             - name: OLLAMA_URL
               value: "http://ai-demo-ollama:11434"
             - name: OPENWEBUI_URL
-              value: "http://ai-demo-open-webui:8080"
+              value: "http://ai-demo-open-webui:80"
             - name: MODEL_NAME
               value: "qwen2.5:1.5b"
             - name: KB_NAME
