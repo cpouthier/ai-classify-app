@@ -140,6 +140,22 @@ def upload_document(token, path):
         return json.loads(resp.read())
 
 
+def wait_for_file_processed(token, file_id, timeout=120):
+    # Upload queues text extraction as a background task and returns immediately (status:
+    # pending -> completed). Adding the file to a knowledge collection before that finishes
+    # fails with a "content is empty" 400, so wait for it here.
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        result = http_json("GET", f"{OPENWEBUI_URL}/api/v1/files/{file_id}", token=token)
+        status = (result.get("data") or {}).get("status")
+        if status == "completed":
+            return
+        if status == "failed":
+            raise SystemExit(f"Open WebUI failed to process file {file_id}")
+        time.sleep(2)
+    raise SystemExit(f"Timed out waiting for Open WebUI to finish processing file {file_id}")
+
+
 def add_file_to_collection(token, collection_id, file_id):
     http_json(
         "POST",
@@ -164,6 +180,7 @@ def load_knowledge_base(token, collection_id):
     for path in files:
         print(f"Uploading {path} ...")
         doc = upload_document(token, path)
+        wait_for_file_processed(token, doc["id"])
         add_file_to_collection(token, collection_id, doc["id"])
         print(f"  added to collection {collection_id} as {doc['id']}")
 
@@ -184,6 +201,9 @@ def main():
 if __name__ == "__main__":
     try:
         main()
+    except urllib.error.HTTPError as exc:
+        print(f"Init job failed: {exc}: {exc.read().decode(errors='replace')}", file=sys.stderr)
+        sys.exit(1)
     except Exception as exc:  # noqa: BLE001
         print(f"Init job failed: {exc}", file=sys.stderr)
         sys.exit(1)
