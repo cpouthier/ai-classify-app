@@ -80,6 +80,15 @@ you'd rather set them up by hand or already have them from a previous run.
 To tear it down: `./scripts/teardown-cluster1.sh [kube-context]` (keeps the S3 profile and
 credentials, since cluster2 still needs them for DR import).
 
+Open WebUI's Service is `LoadBalancer` type, so once the cluster's LB implementation (MetalLB
+on-prem, a cloud LB otherwise) assigns it an address, get it with:
+
+```bash
+kubectl get svc ai-demo-open-webui -n ai-demo
+```
+
+and open `http://<EXTERNAL-IP>` in a browser.
+
 ### Preparing cluster2 (DR side)
 
 Cluster2 does not run its own copy of the app, it only needs Veeam Kasten with:
