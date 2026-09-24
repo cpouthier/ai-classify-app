@@ -44,8 +44,7 @@ def meta():
 
 @app.get("/results")
 def results(limit: int = 200):
-    rows = db.list_images(limit=limit)
-    return JSONResponse(rows, default=str)
+    return db.list_images(limit=limit)
 
 
 @app.get("/image/{image_uuid}")
@@ -83,7 +82,7 @@ async def upload(files: list[UploadFile]):
         )
         results_out.append(row)
 
-    return JSONResponse(results_out, default=str)
+    return results_out
 
 
 @app.get("/", response_class=HTMLResponse)
