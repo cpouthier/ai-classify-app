@@ -25,7 +25,7 @@ important to back up as the database:
 
 | PVC | Holds | Size |
 |---|---|---|
-| `ai-model` | The ONNX model graph (`model.onnx`) | 100Mi |
+| `ai-model` | The ONNX model graph (`model.onnx`), plus a copy of the weights alongside it (onnxruntime needs both in the same directory) | 300Mi |
 | `ai-trained-weight` | The model's trained weights (`model.onnx.data`) | 300Mi |
 
 An initContainer on `classify-app` seeds both from the copy baked into the image the first time

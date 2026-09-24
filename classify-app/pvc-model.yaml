@@ -1,5 +1,8 @@
 # The ONNX model graph (architecture), seeded from the image by classify-app's initContainer
 # on first boot. Small, but backed up like any other important data, that's the point.
+# Sized to also hold a copy of model.onnx.data (see the seed-model initContainer): onnxruntime
+# expects the graph and its external weights file in the same directory, so the weights get
+# copied here too alongside the ai-trained-weight PVC that owns them.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -11,4 +14,4 @@ spec:
   storageClassName: sc-prod
   resources:
     requests:
-      storage: 100Mi
+      storage: 300Mi
