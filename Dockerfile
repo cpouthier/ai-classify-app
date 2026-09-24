@@ -4,6 +4,10 @@
 FROM python:3.11-slim AS model-export
 
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# torch's onnx.export() now goes through a compat layer that imports onnxscript unconditionally,
+# even for the legacy (non-dynamo) exporter path, without it export() fails at runtime, not at
+# pip-install time, so this is easy to miss.
+RUN pip install --no-cache-dir onnxscript
 
 RUN python - <<'PY'
 import torch
