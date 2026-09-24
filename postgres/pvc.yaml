@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: ai-demo
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: sc-prod
+  resources:
+    requests:
+      storage: 5Gi

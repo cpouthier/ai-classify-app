@@ -1,0 +1,23 @@
+# Import this same Profile (or a copy pointing at the same bucket/path) on cluster2 as well,
+# Kasten needs a matching Location Profile there to import RestorePoints for the DR restore.
+apiVersion: config.kio.kasten.io/v1alpha1
+kind: Profile
+metadata:
+  name: ai-demo-s3
+  namespace: kasten-io
+spec:
+  type: Location
+  locationSpec:
+    type: ObjectStore
+    credential:
+      secretType: AwsAccessKey
+      secret:
+        apiVersion: v1
+        kind: Secret
+        name: ai-demo-s3-creds
+        namespace: kasten-io
+    objectStore:
+      objectStoreType: S3
+      name: REPLACE_ME_BUCKET_NAME
+      region: REPLACE_ME_REGION
+      # endpoint: https://REPLACE_ME_IF_NOT_USING_AWS_S3   # uncomment for MinIO/S3-compatible

@@ -1,0 +1,18 @@
+# Applied on cluster2 (the DR cluster) and selected during the DR restore/import so that
+# every restored PVC lands on sc-dr instead of the original sc-prod.
+apiVersion: config.kio.kasten.io/v1alpha1
+kind: TransformSet
+metadata:
+  name: sc-prod-to-sc-dr
+  namespace: kasten-io
+spec:
+  comment: "Rewrite storage class from sc-prod (cluster1) to sc-dr (cluster2) on DR restore"
+  transforms:
+    - subject:
+        resource: persistentvolumeclaims
+        group: ""
+        version: v1
+      json:
+        - op: replace
+          path: /spec/storageClassName
+          value: sc-dr

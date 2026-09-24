@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ai-demo
+  labels:
+    purpose: puls8-bc-dr-demo

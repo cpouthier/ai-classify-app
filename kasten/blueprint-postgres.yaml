@@ -1,0 +1,119 @@
+apiVersion: cr.kanister.io/v1alpha1
+kind: Blueprint
+metadata:
+  name: ai-demo-postgres-blueprint
+  namespace: kasten-io
+actions:
+  backup:
+    kind: Deployment
+    outputArtifacts:
+      pgBackup:
+        kopiaSnapshot: "{{ .Phases.pgDump.Output.kopiaOutput }}"
+    objects:
+      pgSecret:
+        kind: Secret
+        name: postgres-credentials
+        namespace: "{{ .Deployment.Namespace }}"
+    phases:
+      - func: MultiContainerRun
+        name: pgDump
+        args:
+          namespace: "{{ .Deployment.Namespace }}"
+          sharedVolumeMedium: Memory
+          initImage: '{{if index .Options "pgImage"}}{{.Options.pgImage}}{{else}}pgvector/pgvector:pg16{{end}}'
+          initCommand:
+            - bash
+            - -o
+            - errexit
+            - -o
+            - pipefail
+            - -c
+            - |
+              export PGPASSWORD="{{ index .Phases.pgDump.Secrets.pgSecret.Data.POSTGRES_PASSWORD | toString }}"
+              pg_dumpall \
+                -h postgres \
+                -U "{{ index .Phases.pgDump.Secrets.pgSecret.Data.POSTGRES_USER | toString }}" \
+                > /tmp/data
+          image: '{{if index .Options "kanisterImage"}}{{.Options.kanisterImage}}{{else}}ghcr.io/kanisterio/kanister-tools:0.114.0{{end}}'
+          command:
+            - bash
+            - -o
+            - errexit
+            - -o
+            - pipefail
+            - -c
+            - |
+              kando location push --profile '{{ toJson .Profile }}' \
+                --path "/ai-demo/postgres/dump_$(date +%Y%m%d_%H%M%S).sql" \
+                --output-name kopiaOutput \
+                - < /tmp/data
+          podOverride:
+            serviceAccountName: "kanister-svc"
+
+  restore:
+    kind: Deployment
+    inputArtifactNames:
+      - pgBackup
+    objects:
+      pgSecret:
+        kind: Secret
+        name: postgres-credentials
+        namespace: "{{ .Deployment.Namespace }}"
+    phases:
+      - func: MultiContainerRun
+        name: pgRestore
+        args:
+          namespace: "{{ .Deployment.Namespace }}"
+          sharedVolumeMedium: Memory
+          image: '{{if index .Options "kanisterImage"}}{{.Options.kanisterImage}}{{else}}ghcr.io/kanisterio/kanister-tools:0.114.0{{end}}'
+          command:
+            - bash
+            - -o
+            - errexit
+            - -o
+            - pipefail
+            - -c
+            - |
+              kando location pull --profile '{{ toJson .Profile }}' \
+                --path "{{ .ArtifactsIn.pgBackup.KopiaSnapshot }}" \
+                - > /tmp/data
+          initImage: '{{if index .Options "pgImage"}}{{.Options.pgImage}}{{else}}pgvector/pgvector:pg16{{end}}'
+          initCommand:
+            - bash
+            - -o
+            - errexit
+            - -o
+            - pipefail
+            - -c
+            - |
+              export PGPASSWORD="{{ index .Phases.pgRestore.Secrets.pgSecret.Data.POSTGRES_PASSWORD | toString }}"
+              psql \
+                -h postgres \
+                -U "{{ index .Phases.pgRestore.Secrets.pgSecret.Data.POSTGRES_USER | toString }}" \
+                -d postgres \
+                -v ON_ERROR_STOP=0 \
+                -f /tmp/data
+          podOverride:
+            serviceAccountName: "kanister-svc"
+
+  delete:
+    inputArtifactNames:
+      - pgBackup
+    phases:
+      - func: KubeTask
+        name: pgDelete
+        args:
+          namespace: "{{ .Namespace.Name }}"
+          image: '{{if index .Options "kanisterImage"}}{{.Options.kanisterImage}}{{else}}ghcr.io/kanisterio/kanister-tools:0.114.0{{end}}'
+          command:
+            - bash
+            - -o
+            - errexit
+            - -o
+            - pipefail
+            - -c
+            - |
+              kando location delete --profile '{{ toJson .Profile }}' \
+                --path "{{ .ArtifactsIn.pgBackup.KopiaSnapshot }}"
+          podOverride:
+            serviceAccountName: "kanister-svc"

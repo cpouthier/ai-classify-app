@@ -1,0 +1,22 @@
+apiVersion: config.kio.kasten.io/v1alpha1
+kind: BlueprintBinding
+metadata:
+  name: ai-demo-postgres-binding
+  namespace: kasten-io
+spec:
+  blueprint:
+    name: ai-demo-postgres-blueprint
+    namespace: kasten-io
+  subject:
+    resources:
+      - type:
+          operator: In
+          values:
+            - group: apps
+              version: v1
+              resource: deployments
+              name: postgres
+        namespace:
+          operator: In
+          values:
+            - ai-demo

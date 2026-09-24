@@ -1,0 +1,30 @@
+# Hourly backup + export of the ai-demo namespace to the S3 location profile.
+# Policy CRD fields can shift slightly between Kasten releases, if `kubectl apply` rejects
+# this, check `kubectl explain policy.spec --recursive` on your cluster and adjust.
+apiVersion: config.kio.kasten.io/v1alpha1
+kind: Policy
+metadata:
+  name: ai-demo-hourly
+  namespace: kasten-io
+spec:
+  comment: "Hourly backup and export of ai-demo for the Puls8 BC/DR demo"
+  frequency: "@hourly"
+  retention:
+    hourly: 24
+    daily: 7
+  actions:
+    - action: backup
+    - action: export
+      exportParameters:
+        frequency: "@hourly"
+        profile:
+          name: ai-demo-s3
+          namespace: kasten-io
+        exportData:
+          enabled: true
+  selector:
+    matchExpressions:
+      - key: k10.kasten.io/appNamespace
+        operator: In
+        values:
+          - ai-demo

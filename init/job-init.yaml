@@ -1,0 +1,69 @@
+# Assumes the chart was installed with `helm install ai-demo open-webui/open-webui ...`
+# (release name "ai-demo"), which names the services ai-demo-ollama and ai-demo-open-webui.
+# Adjust OLLAMA_URL / OPENWEBUI_URL below if you used a different release name.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ai-demo-init
+  namespace: ai-demo
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: ai-demo-init
+    spec:
+      restartPolicy: Never
+      tolerations:
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+      containers:
+        - name: init
+          image: python:3.12-alpine
+          command: ["python3", "/scripts/init.py"]
+          env:
+            - name: OLLAMA_URL
+              value: "http://ai-demo-ollama:11434"
+            - name: OPENWEBUI_URL
+              value: "http://ai-demo-open-webui:8080"
+            - name: MODEL_NAME
+              value: "qwen2.5:1.5b"
+            - name: KB_NAME
+              value: "puls8-demo-kb"
+            - name: WEBUI_ADMIN_NAME
+              value: "Demo Admin"
+            - name: WEBUI_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: webui-admin-credentials
+                  key: WEBUI_ADMIN_EMAIL
+            - name: WEBUI_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: webui-admin-credentials
+                  key: WEBUI_ADMIN_PASSWORD
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          volumeMounts:
+            - name: init-script
+              mountPath: /scripts
+            - name: kb-files
+              mountPath: /kb
+      volumes:
+        - name: init-script
+          configMap:
+            name: ai-demo-init-script
+        - name: kb-files
+          configMap:
+            name: ai-demo-kb-files
