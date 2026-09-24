@@ -11,12 +11,22 @@
 
 set -euo pipefail
 
+if [[ -t 1 ]]; then
+  C_PROMPT=$'\033[1;36m'  # cyan bold, for value prompts
+  C_WARN=$'\033[1;33m'    # yellow bold, for yes/no confirmations
+  C_RESET=$'\033[0m'
+else
+  C_PROMPT=""
+  C_WARN=""
+  C_RESET=""
+fi
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 CONTEXT="${1:-$(kubectl config current-context)}"
 echo "Using kube-context: ${CONTEXT}"
-read -r -p "Confirm this is cluster1 (sc-prod side)? [y/N] " confirm
+read -r -p "${C_WARN}Confirm this is cluster1 (sc-prod side)? [y/N] ${C_RESET}" confirm
 if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
   echo "Aborted."
   exit 1
@@ -26,7 +36,7 @@ KCTL=(kubectl --context "${CONTEXT}")
 echo "==> Available StorageClasses on ${CONTEXT}"
 "${KCTL[@]}" get storageclass
 echo
-read -r -p "StorageClass to use for the ai-demo PVCs: " STORAGE_CLASS
+read -r -p "${C_PROMPT}StorageClass to use for the ai-demo PVCs: ${C_RESET}" STORAGE_CLASS
 if [[ -z "${STORAGE_CLASS}" ]]; then
   echo "A storage class is required."
   exit 1
@@ -40,11 +50,11 @@ echo "==> Creating namespace"
 "${KCTL[@]}" apply -f manifests/namespace.yaml
 
 echo "==> Postgres credentials"
-read -r -p "Postgres username [ai_demo]: " PG_USER
+read -r -p "${C_PROMPT}Postgres username [ai_demo]: ${C_RESET}" PG_USER
 PG_USER="${PG_USER:-ai_demo}"
-read -r -p "Postgres database name [ai_demo]: " PG_DB
+read -r -p "${C_PROMPT}Postgres database name [ai_demo]: ${C_RESET}" PG_DB
 PG_DB="${PG_DB:-ai_demo}"
-read -r -s -p "Postgres password: " PG_PASSWORD
+read -r -s -p "${C_PROMPT}Postgres password: ${C_RESET}" PG_PASSWORD
 echo
 if [[ -z "${PG_PASSWORD}" ]]; then
   echo "A postgres password is required."
@@ -66,8 +76,8 @@ DB_URL="postgresql://${PG_USER}:${PG_PASSWORD}@postgres.ai-demo.svc.cluster.loca
   --dry-run=client -o yaml | "${KCTL[@]}" apply -f -
 
 echo "==> Open WebUI admin account"
-read -r -p "Open WebUI admin email: " WEBUI_ADMIN_EMAIL
-read -r -s -p "Open WebUI admin password: " WEBUI_ADMIN_PASSWORD
+read -r -p "${C_PROMPT}Open WebUI admin email: ${C_RESET}" WEBUI_ADMIN_EMAIL
+read -r -s -p "${C_PROMPT}Open WebUI admin password: ${C_RESET}" WEBUI_ADMIN_PASSWORD
 echo
 if [[ -z "${WEBUI_ADMIN_EMAIL}" || -z "${WEBUI_ADMIN_PASSWORD}" ]]; then
   echo "Admin email and password are required."
@@ -94,7 +104,7 @@ echo "  1) LoadBalancer (MetalLB, or a cloud LB, whatever the cluster provides)"
 echo "  2) Ingress via an nginx ingress controller"
 echo "  3) Ingress via Traefik"
 echo "  4) None, I will handle exposure myself (stays ClusterIP)"
-read -r -p "Choice [1-4]: " EXPOSE_CHOICE
+read -r -p "${C_PROMPT}Choice [1-4]: ${C_RESET}" EXPOSE_CHOICE
 
 EXPOSE_ARGS=()
 ACCESS_MODE="manual"
@@ -108,7 +118,7 @@ case "${EXPOSE_CHOICE}" in
     ACCESS_MODE="ingress"
     INGRESS_CLASS="nginx"
     [[ "${EXPOSE_CHOICE}" == "3" ]] && INGRESS_CLASS="traefik"
-    read -r -p "Ingress hostname (must resolve to this cluster's ingress controller): " INGRESS_HOST
+    read -r -p "${C_PROMPT}Ingress hostname (must resolve to this cluster's ingress controller): ${C_RESET}" INGRESS_HOST
     if [[ -z "${INGRESS_HOST}" ]]; then
       echo "An ingress hostname is required for this option."
       exit 1
@@ -150,14 +160,14 @@ done
 "${KCTL[@]}" wait --for=condition=complete job/ai-demo-init -n ai-demo --timeout=1800s
 
 echo "==> Kasten: S3 location profile"
-read -r -p "Create the Kasten Location Profile now via this script? [y/N] " CREATE_PROFILE
+read -r -p "${C_WARN}Create the Kasten Location Profile now via this script? [y/N] ${C_RESET}" CREATE_PROFILE
 if [[ "${CREATE_PROFILE}" == "y" || "${CREATE_PROFILE}" == "Y" ]]; then
-  read -r -p "S3 bucket name: " S3_BUCKET
-  read -r -p "S3 region [us-east-1]: " S3_REGION
+  read -r -p "${C_PROMPT}S3 bucket name: ${C_RESET}" S3_BUCKET
+  read -r -p "${C_PROMPT}S3 region [us-east-1]: ${C_RESET}" S3_REGION
   S3_REGION="${S3_REGION:-us-east-1}"
-  read -r -p "S3 endpoint (leave empty for AWS S3): " S3_ENDPOINT
-  read -r -p "S3 access key id: " S3_ACCESS_KEY
-  read -r -s -p "S3 secret access key: " S3_SECRET_KEY
+  read -r -p "${C_PROMPT}S3 endpoint (leave empty for AWS S3): ${C_RESET}" S3_ENDPOINT
+  read -r -p "${C_PROMPT}S3 access key id: ${C_RESET}" S3_ACCESS_KEY
+  read -r -s -p "${C_PROMPT}S3 secret access key: ${C_RESET}" S3_SECRET_KEY
   echo
 
   "${KCTL[@]}" create secret generic ai-demo-s3-creds \
@@ -186,7 +196,7 @@ echo "==> Kasten: hourly backup + export policy"
 "${KCTL[@]}" apply -f kasten/policy.yaml
 
 echo "==> Kasten: PostgreSQL blueprint"
-read -r -p "Create the PostgreSQL Blueprint and BlueprintBinding now via this script? [y/N] " CREATE_BLUEPRINT
+read -r -p "${C_WARN}Create the PostgreSQL Blueprint and BlueprintBinding now via this script? [y/N] ${C_RESET}" CREATE_BLUEPRINT
 if [[ "${CREATE_BLUEPRINT}" == "y" || "${CREATE_BLUEPRINT}" == "Y" ]]; then
   "${KCTL[@]}" apply -f kasten/blueprint-postgres.yaml
   "${KCTL[@]}" apply -f kasten/blueprintbinding-postgres.yaml
@@ -196,7 +206,7 @@ else
 fi
 
 echo "==> Kasten: sc-prod-to-sc-dr TransformSet"
-read -r -p "Create the TransformSet now via this script? [y/N] " CREATE_TRANSFORMSET
+read -r -p "${C_WARN}Create the TransformSet now via this script? [y/N] ${C_RESET}" CREATE_TRANSFORMSET
 if [[ "${CREATE_TRANSFORMSET}" == "y" || "${CREATE_TRANSFORMSET}" == "Y" ]]; then
   "${KCTL[@]}" apply -f kasten/transformset.yaml
   echo "Note: this TransformSet only takes effect during the DR restore on cluster2,"

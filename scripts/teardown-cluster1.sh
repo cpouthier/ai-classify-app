@@ -8,9 +8,20 @@
 
 set -euo pipefail
 
+if [[ -t 1 ]]; then
+  C_WARN=$'\033[1;33m'
+  C_RESET=$'\033[0m'
+else
+  C_WARN=""
+  C_RESET=""
+fi
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
+
 CONTEXT="${1:-$(kubectl config current-context)}"
 echo "Using kube-context: ${CONTEXT}"
-read -r -p "This deletes the ai-demo namespace and its Helm release on this cluster. Continue? [y/N] " confirm
+read -r -p "${C_WARN}This deletes the ai-demo namespace and its Helm release on this cluster. Continue? [y/N] ${C_RESET}" confirm
 if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
   echo "Aborted."
   exit 1

@@ -12,6 +12,14 @@
 
 set -euo pipefail
 
+if [[ -t 1 ]]; then
+  C_WARN=$'\033[1;33m'
+  C_RESET=$'\033[0m'
+else
+  C_WARN=""
+  C_RESET=""
+fi
+
 NODE="${1:?Usage: demo-bc.sh <node-name> [kube-context]}"
 CONTEXT="${2:-$(kubectl config current-context)}"
 KCTL=(kubectl --context "${CONTEXT}")
@@ -23,7 +31,7 @@ echo "==> Pods currently running in ai-demo:"
 echo "==> Cordoning node ${NODE}"
 "${KCTL[@]}" cordon "${NODE}"
 
-read -r -p "Drain ${NODE} now (graceful eviction)? [y/N] " confirm
+read -r -p "${C_WARN}Drain ${NODE} now (graceful eviction)? [y/N] ${C_RESET}" confirm
 if [[ "${confirm}" == "y" || "${confirm}" == "Y" ]]; then
   "${KCTL[@]}" drain "${NODE}" --ignore-daemonsets --delete-emptydir-data --force
 else

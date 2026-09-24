@@ -20,11 +20,21 @@
 
 set -euo pipefail
 
+if [[ -t 1 ]]; then
+  C_PROMPT=$'\033[1;36m'
+  C_WARN=$'\033[1;33m'
+  C_RESET=$'\033[0m'
+else
+  C_PROMPT=""
+  C_WARN=""
+  C_RESET=""
+fi
+
 CONTEXT="${1:-$(kubectl config current-context)}"
 KCTL=(kubectl --context "${CONTEXT}")
 
 echo "Using kube-context: ${CONTEXT}"
-read -r -p "Confirm this is cluster2 (sc-dr side)? [y/N] " confirm
+read -r -p "${C_WARN}Confirm this is cluster2 (sc-dr side)? [y/N] ${C_RESET}" confirm
 if [[ "${confirm}" != "y" && "${confirm}" != "Y" ]]; then
   echo "Aborted."
   exit 1
@@ -53,7 +63,7 @@ echo "==> Available ai-demo restore points (most recent last):"
   --sort-by=.metadata.creationTimestamp \
   -o custom-columns=NAME:.metadata.name,CREATED:.metadata.creationTimestamp
 
-read -r -p "Restore point name to restore (leave empty for the most recent shown above): " RP_NAME
+read -r -p "${C_PROMPT}Restore point name to restore (leave empty for the most recent shown above): ${C_RESET}" RP_NAME
 if [[ -z "${RP_NAME}" ]]; then
   RP_NAME=$("${KCTL[@]}" get restorepoints.apps.kio.kasten.io -n kasten-io \
     -l k10.kasten.io/appNamespace=ai-demo \
@@ -86,7 +96,7 @@ EOF
 
 echo "==> About to apply:"
 cat "${RESTORE_YAML}"
-read -r -p "Proceed with restore? [y/N] " go
+read -r -p "${C_WARN}Proceed with restore? [y/N] ${C_RESET}" go
 if [[ "${go}" != "y" && "${go}" != "Y" ]]; then
   echo "Aborted, nothing restored."
   rm -f "${RESTORE_YAML}"
