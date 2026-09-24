@@ -55,6 +55,23 @@ def get_image(image_uuid: str):
     return FileResponse(IMAGES_DIR / row["filename"])
 
 
+@app.delete("/image/{image_uuid}")
+def delete_image(image_uuid: str):
+    row = db.delete_image(image_uuid)
+    if not row:
+        return JSONResponse({"detail": "not found"}, status_code=404)
+    (IMAGES_DIR / row["filename"]).unlink(missing_ok=True)
+    return {"status": "deleted", "uuid": image_uuid}
+
+
+@app.delete("/results")
+def delete_all_results():
+    rows = db.delete_all_images()
+    for row in rows:
+        (IMAGES_DIR / row["filename"]).unlink(missing_ok=True)
+    return {"status": "deleted", "count": len(rows)}
+
+
 @app.post("/upload")
 async def upload(files: list[UploadFile]):
     results_out = []

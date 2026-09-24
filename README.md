@@ -8,7 +8,7 @@ between them.
 
 This replaces an earlier RAG chatbot version of this demo, dropped because CPU-bound LLM
 inference turned out to be too heavy for the target hardware. Single-image CPU classification
-with a small MobileNetV3 model has a tiny, predictable resource footprint by comparison.
+with ResNet-50 still has a small, predictable resource footprint by comparison.
 
 ## What it deploys
 
@@ -16,7 +16,7 @@ Namespace `ai-demo` on cluster1:
 
 | Component | Role | Storage |
 |---|---|---|
-| `classify-app` | FastAPI backend (ONNX Runtime, MobileNetV3-Small/ImageNet) + a one-page frontend | PVC `images-data`, 5Gi |
+| `classify-app` | FastAPI backend (ONNX Runtime, ResNet-50/ImageNet) + a one-page frontend | PVC `images-data`, 5Gi |
 | PostgreSQL | Stores classification results | PVC `postgres-data`, 5Gi |
 
 The ONNX model itself is split across two more PVCs instead of only living inside the image,
@@ -26,7 +26,7 @@ important to back up as the database:
 | PVC | Holds | Size |
 |---|---|---|
 | `ai-model` | The ONNX model graph (`model.onnx`) | 100Mi |
-| `ai-trained-weight` | The model's trained weights (`model.onnx.data`) | 200Mi |
+| `ai-trained-weight` | The model's trained weights (`model.onnx.data`) | 300Mi |
 
 An initContainer on `classify-app` seeds both from the copy baked into the image the first time
 a pod starts (a no-op afterward), so they exist as real, backed-up cluster data rather than
@@ -63,16 +63,19 @@ Veeam Kasten resources (namespace `kasten-io`):
   `filename`, `label` + `confidence` (top-1), a `top3` array, `created_at` (UTC), `pod_name`
   and `node_name` (both from the Downward API).
 - `GET /results`: the stored rows, most recent first.
+- `DELETE /results`: deletes every image (row + file).
 - `GET /image/{uuid}`: serves the stored image file.
+- `DELETE /image/{uuid}`: deletes one image (row + file).
 - `GET /meta`: cluster name, current pod/node, total image count, last sequence id, everything
   the frontend's banner needs.
 - `GET /healthz`: liveness/readiness target.
 - `GET /`: the one-page frontend (no build step, plain HTML/CSS/JS), drag-and-drop multi-file
   upload, a card grid (thumbnail, label + confidence, `#sequence_id`, short uuid, timestamp,
-  pod/node), and a banner (cluster name, pod, node, total images, last sequence id). Polls
-  `/meta` and `/results` every 3 seconds, no manual refresh needed during the demo.
+  pod/node, a per-card delete button) and a "Delete all images" button, and a banner (cluster
+  name, pod, node, total images, last sequence id). Polls `/meta` and `/results` every 3
+  seconds, no manual refresh needed during the demo.
 
-The model (MobileNetV3-Small, ImageNet-1000 classes) is exported to ONNX and baked into the
+The model (ResNet-50, ImageNet-1000 classes) is exported to ONNX and baked into the
 image at build time, the running container never depends on torch or the internet.
 
 ## Repository layout

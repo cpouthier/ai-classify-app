@@ -82,3 +82,21 @@ def get_image_row(image_uuid):
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT filename FROM images WHERE uuid = %s", (image_uuid,))
             return cur.fetchone()
+
+
+def delete_image(image_uuid):
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("DELETE FROM images WHERE uuid = %s RETURNING filename", (image_uuid,))
+            row = cur.fetchone()
+        conn.commit()
+    return row
+
+
+def delete_all_images():
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("DELETE FROM images RETURNING filename")
+            rows = cur.fetchall()
+        conn.commit()
+    return rows

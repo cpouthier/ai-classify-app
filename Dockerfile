@@ -1,6 +1,6 @@
-# Stage 1: export the pretrained MobileNetV3-Small (ImageNet) weights to ONNX, plus the
-# exact category label order that model was trained with. Kept as a separate stage so the
-# heavy torch/torchvision toolchain never ends up in the runtime image.
+# Stage 1: export the pretrained ResNet-50 (ImageNet) weights to ONNX, plus the exact category
+# label order that model was trained with. Kept as a separate stage so the heavy
+# torch/torchvision toolchain never ends up in the runtime image.
 FROM python:3.11-slim AS model-export
 
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -11,10 +11,10 @@ RUN pip install --no-cache-dir onnxscript
 
 RUN python - <<'PY'
 import torch
-from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
+from torchvision.models import resnet50, ResNet50_Weights
 
-weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
-model = mobilenet_v3_small(weights=weights)
+weights = ResNet50_Weights.IMAGENET1K_V2
+model = resnet50(weights=weights)
 model.eval()
 
 dummy_input = torch.randn(1, 3, 224, 224)
