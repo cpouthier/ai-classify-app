@@ -41,6 +41,9 @@ COPY app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY --from=model-export /model.onnx /app/model.onnx
+# torch's onnx exporter saves the weights as external data next to the graph file (even for a
+# model this small), onnxruntime needs both files present, model.onnx.data is not optional.
+COPY --from=model-export /model.onnx.data /app/model.onnx.data
 COPY --from=model-export /labels.txt /app/labels.txt
 
 COPY app/ /app/
