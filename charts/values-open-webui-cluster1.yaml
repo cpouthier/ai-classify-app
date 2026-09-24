@@ -11,13 +11,16 @@
 
 replicaCount: 1
 
+# 384Mi/768Mi got OOMKilled at startup in testing, Open WebUI's bundled Python/ML stack
+# (torch, sentence-transformers for RAG embeddings, etc) needs more headroom than that even
+# idle. 512Mi/2Gi held steady around 670Mi actual usage.
 resources:
   requests:
     cpu: 200m
-    memory: 384Mi
+    memory: 512Mi
   limits:
     cpu: "1"
-    memory: 768Mi
+    memory: 2Gi
 
 tolerations: &tolerations
   - key: node.kubernetes.io/not-ready

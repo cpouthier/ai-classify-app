@@ -26,8 +26,12 @@ Puls8 and Veeam Kasten:
 | Component | Requests | Limits |
 |---|---|---|
 | Ollama | 500m / 1.5Gi | 2 / 3Gi |
-| Open WebUI | 200m / 384Mi | 1 / 768Mi |
+| Open WebUI | 200m / 512Mi | 1 / 2Gi |
 | PostgreSQL | 200m / 384Mi | 1 / 768Mi |
+
+Open WebUI's limit is higher than the other two because its image bundles a Python/ML stack
+(torch, sentence-transformers for RAG embeddings) that needs real headroom even at idle, an
+earlier 384Mi/768Mi setting got it OOMKilled at startup during testing.
 
 Veeam Kasten resources (namespace `kasten-io`):
 
