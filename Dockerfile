@@ -1,6 +1,9 @@
-# Stage 1: export the pretrained ResNet-50 (ImageNet) weights to ONNX, plus the exact category
-# label order that model was trained with. Kept as a separate stage so the heavy
-# torch/torchvision toolchain never ends up in the runtime image.
+# Stage 1: export the pretrained MobileNetV3-Small (ImageNet) weights to ONNX, plus the
+# exact category label order that model was trained with. Kept as a separate stage so the
+# heavy torch/torchvision toolchain never ends up in the runtime image.
+# Reverted from ResNet-50: even single-image on-demand ResNet-50 CPU inference correlated with
+# the same unexplained host crashes seen earlier with LLM inference, on hardware this unstable
+# smaller is safer, but the crashes are very likely a host-level issue, not really about model size.
 FROM python:3.11-slim AS model-export
 
 RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
@@ -11,10 +14,10 @@ RUN pip install --no-cache-dir onnxscript
 
 RUN python - <<'PY'
 import torch
-from torchvision.models import resnet50, ResNet50_Weights
+from torchvision.models import mobilenet_v3_small, MobileNet_V3_Small_Weights
 
-weights = ResNet50_Weights.IMAGENET1K_V2
-model = resnet50(weights=weights)
+weights = MobileNet_V3_Small_Weights.IMAGENET1K_V1
+model = mobilenet_v3_small(weights=weights)
 model.eval()
 
 dummy_input = torch.randn(1, 3, 224, 224)

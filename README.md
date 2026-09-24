@@ -8,7 +8,7 @@ between them.
 
 This replaces an earlier RAG chatbot version of this demo, dropped because CPU-bound LLM
 inference turned out to be too heavy for the target hardware. Single-image CPU classification
-with ResNet-50 still has a small, predictable resource footprint by comparison.
+with a small MobileNetV3 model has a tiny, predictable resource footprint by comparison.
 
 ## What it deploys
 
@@ -16,7 +16,7 @@ Namespace `ai-demo` on cluster1:
 
 | Component | Role | Storage |
 |---|---|---|
-| `classify-app` | FastAPI backend (ONNX Runtime, ResNet-50/ImageNet) + a one-page frontend | PVC `images-data`, 5Gi |
+| `classify-app` | FastAPI backend (ONNX Runtime, MobileNetV3-Small/ImageNet) + a one-page frontend | PVC `images-data`, 5Gi |
 | PostgreSQL | Stores classification results | PVC `postgres-data`, 5Gi |
 
 The ONNX model itself is split across two more PVCs instead of only living inside the image,
@@ -75,7 +75,7 @@ Veeam Kasten resources (namespace `kasten-io`):
   name, pod, node, total images, last sequence id). Polls `/meta` and `/results` every 3
   seconds, no manual refresh needed during the demo.
 
-The model (ResNet-50, ImageNet-1000 classes) is exported to ONNX and baked into the
+The model (MobileNetV3-Small, ImageNet-1000 classes) is exported to ONNX and baked into the
 image at build time, the running container never depends on torch or the internet.
 
 ## Repository layout
@@ -190,3 +190,9 @@ alongside it.
   on firmer ground.
 - The TransformSet's ConfigMap patch uses a JSON Patch `add` (not `replace`) on
   `/data/CLUSTER_NAME`, so it works whether or not that key survived the restore.
+- The model was briefly switched to ResNet-50 for better accuracy, then reverted:
+  single-image on-demand ResNet-50 CPU inference correlated with the same unexplained,
+  trace-free host crashes seen earlier with LLM inference on this hardware. A model that light
+  should never be enough to bring a host down on its own, so this looks like an underlying
+  hardware issue on the demo box rather than a model-size problem, worth keeping in mind before
+  assuming a bigger model is safe just because it "held up" earlier.
