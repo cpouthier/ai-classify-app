@@ -9,14 +9,14 @@ actions:
     outputArtifacts:
       pgBackup:
         kopiaSnapshot: "{{ .Phases.pgDump.Output.kopiaOutput }}"
-    objects:
-      pgSecret:
-        kind: Secret
-        name: postgres-credentials
-        namespace: "{{ .Deployment.Namespace }}"
     phases:
       - func: MultiContainerRun
         name: pgDump
+        objects:
+          pgSecret:
+            kind: Secret
+            name: postgres-credentials
+            namespace: "{{ .Deployment.Namespace }}"
         args:
           namespace: "{{ .Deployment.Namespace }}"
           sharedVolumeMedium: Memory
@@ -54,14 +54,14 @@ actions:
     kind: Deployment
     inputArtifactNames:
       - pgBackup
-    objects:
-      pgSecret:
-        kind: Secret
-        name: postgres-credentials
-        namespace: "{{ .Deployment.Namespace }}"
     phases:
       - func: MultiContainerRun
         name: pgRestore
+        objects:
+          pgSecret:
+            kind: Secret
+            name: postgres-credentials
+            namespace: "{{ .Deployment.Namespace }}"
         args:
           namespace: "{{ .Deployment.Namespace }}"
           sharedVolumeMedium: Memory

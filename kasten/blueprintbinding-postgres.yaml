@@ -4,11 +4,11 @@ metadata:
   name: ai-demo-postgres-binding
   namespace: kasten-io
 spec:
-  blueprint:
+  blueprintRef:
     name: ai-demo-postgres-blueprint
     namespace: kasten-io
-  subject:
-    resources:
+  resources:
+    matchAll:
       - type:
           operator: In
           values:
@@ -16,7 +16,7 @@ spec:
               version: v1
               resource: deployments
               name: postgres
-        namespace:
+      - namespace:
           operator: In
           values:
             - ai-demo
