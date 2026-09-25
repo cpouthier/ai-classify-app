@@ -6,11 +6,10 @@ Cluster1 runs the live app on Puls8's production StorageClass, cluster2 is the D
 Puls8's replicated DR StorageClass, and Veeam Kasten backs up, exports, and restores the app
 between them.
 
-This replaces an earlier RAG chatbot version of this demo, dropped because CPU-bound LLM
-inference turned out to be too heavy for the target hardware. Single-image CPU classification
-with a small MobileNetV3 model has a tiny, predictable resource footprint by comparison.
 
 ## What it deploys
+
+![Application diagram](doc/application_diagram.png)
 
 Namespace `ai-demo` on cluster1:
 
