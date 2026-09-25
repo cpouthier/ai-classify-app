@@ -12,6 +12,8 @@ from inference import classify
 IMAGES_DIR = Path(os.environ.get("IMAGES_DIR", "/data/images"))
 IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 
+TRAININGDATA_DIR = Path(os.environ.get("TRAININGDATA_DIR", "/data/trainingdata"))
+
 CLUSTER_NAME = os.environ.get("CLUSTER_NAME", "unknown-cluster")
 POD_NAME = os.environ.get("POD_NAME", "unknown-pod")
 NODE_NAME = os.environ.get("NODE_NAME", "unknown-node")
@@ -72,34 +74,52 @@ def delete_all_results():
     return {"status": "deleted", "count": len(rows)}
 
 
+def _ingest(content: bytes, original_filename: str):
+    image_uuid = str(uuid_lib.uuid4())
+    extension = Path(original_filename or "image").suffix or ".jpg"
+    stored_filename = f"{image_uuid}{extension}"
+    stored_path = IMAGES_DIR / stored_filename
+
+    with open(stored_path, "wb") as fh:
+        fh.write(content)
+
+    with Image.open(stored_path) as image:
+        top3 = classify(image)
+
+    return db.insert_image(
+        uuid=image_uuid,
+        filename=stored_filename,
+        label=top3[0]["label"],
+        confidence=top3[0]["confidence"],
+        top3=top3,
+        pod_name=POD_NAME,
+        node_name=NODE_NAME,
+    )
+
+
 @app.post("/upload")
 async def upload(files: list[UploadFile]):
     results_out = []
     for file in files:
-        image_uuid = str(uuid_lib.uuid4())
-        extension = Path(file.filename or "image").suffix or ".jpg"
-        stored_filename = f"{image_uuid}{extension}"
-        stored_path = IMAGES_DIR / stored_filename
-
         content = await file.read()
-        with open(stored_path, "wb") as fh:
-            fh.write(content)
-
-        with Image.open(stored_path) as image:
-            top3 = classify(image)
-
-        row = db.insert_image(
-            uuid=image_uuid,
-            filename=stored_filename,
-            label=top3[0]["label"],
-            confidence=top3[0]["confidence"],
-            top3=top3,
-            pod_name=POD_NAME,
-            node_name=NODE_NAME,
-        )
-        results_out.append(row)
-
+        results_out.append(_ingest(content, file.filename))
     return results_out
+
+
+@app.get("/samples")
+def list_samples():
+    if not TRAININGDATA_DIR.is_dir():
+        return []
+    return sorted(p.name for p in TRAININGDATA_DIR.iterdir() if p.is_file())
+
+
+@app.post("/samples/{filename}")
+def load_sample(filename: str):
+    sample_path = (TRAININGDATA_DIR / filename).resolve()
+    if not sample_path.is_file() or not sample_path.is_relative_to(TRAININGDATA_DIR.resolve()):
+        return JSONResponse({"detail": "not found"}, status_code=404)
+    content = sample_path.read_bytes()
+    return _ingest(content, filename)
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -1,10 +1,10 @@
 # Sample images
 
-The three PNGs here are synthetic placeholders (flat-color shapes), generated only to verify
-the upload/inference/storage pipeline end to end. A shape on a plain background won't match
-any real ImageNet class meaningfully, so the label MobileNetV3 returns for them is not the
-point, only that the request succeeds and a row shows up in the grid.
+30 real, recognizable photos (animals, everyday objects, vehicles, landscapes) covering a range
+of ImageNet-1000 classes, plus three synthetic placeholder PNGs (flat-color shapes) kept around
+for quick pipeline smoke-testing, a shape on a plain background won't match any real class
+meaningfully, so don't expect a convincing label from those three.
 
-For a real demo, replace these with real photos (animals, everyday objects, vehicles),
-ImageNet-1000 classes cover a wide range of them and the results are far more convincing with
-recognizable images.
+These are baked into the app image and seeded into the `<release>-trainingdata` PVC on first
+boot, the app's "Classify sample" picker lets you run one through the model with a click, no
+need to have your own test images on hand.

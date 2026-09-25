@@ -1,8 +1,7 @@
 # AI Image Classifier
 
 An image classification app: drag and drop images, get them classified by a small ONNX model
-running on CPU, browse results in a live-updating grid. Deployed via a portable Helm chart, no
-assumptions about the target cluster.
+running on CPU, browse results in a live-updating grid. Deployed via a portable Helm chart.
 
 ![Application diagram](doc/application_diagram.png)
 
@@ -15,16 +14,16 @@ Namespace of your choice (defaults to the release name if you don't create one f
 | `classify-app` | FastAPI backend (ONNX Runtime, MobileNetV3-Small/ImageNet) + a one-page frontend | PVC, 5Gi |
 | PostgreSQL | Stores classification results | PVC, 5Gi |
 
-The ONNX model itself is split across two more PVCs instead of only living inside the image, on
-purpose, to show that a trained model and its weights are real, persistent data too:
+Two more PVCs back `classify-app`:
 
 | PVC | Holds | Default size |
 |---|---|---|
-| `<release>-model` | The ONNX model graph (`model.onnx`), plus a copy of the weights alongside it (onnxruntime needs both in the same directory) | 300Mi |
-| `<release>-weights` | The model's trained weights (`model.onnx.data`) | 300Mi |
+| `<release>-model` | The ONNX model graph (`model.onnx`) and its weights (`model.onnx.data`), onnxruntime needs both in the same directory | 300Mi |
+| `<release>-trainingdata` | The bundled sample images (from `samples/`), available in the UI's "Classify sample" picker | 100Mi |
 
-An initContainer on `classify-app` seeds both from the copy baked into the image the first time
-a pod starts (a no-op afterward).
+An initContainer on `classify-app` seeds both from the copies baked into the image the first
+time a pod starts (a no-op afterward for the model, samples are seeded with `cp -n` so new ones
+added in a later image update still get picked up).
 
 Every pod tolerates `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` for only
 30 seconds instead of Kubernetes' 5 minute default, so a node failure gets pods rescheduled
@@ -42,14 +41,17 @@ volume from two pods at once.
 - `DELETE /results`: deletes every image (row + file).
 - `GET /image/{uuid}`: serves the stored image file.
 - `DELETE /image/{uuid}`: deletes one image (row + file).
+- `GET /samples`: lists the bundled sample image filenames available on the trainingdata PVC.
+- `POST /samples/{filename}`: classifies one bundled sample as if it had been uploaded.
 - `GET /meta`: cluster name, current pod/node, total image count, last sequence id, everything
   the frontend's banner needs.
 - `GET /healthz`: liveness/readiness target.
 - `GET /`: the one-page frontend (no build step, plain HTML/CSS/JS), drag-and-drop multi-file
-  upload, a card grid (thumbnail, label + confidence, `#sequence_id`, short uuid, timestamp,
-  pod/node, a per-card delete button) and a "Delete all images" button, and a banner (cluster
-  name, pod, node, total images, last sequence id). Polls `/meta` and `/results` every 3
-  seconds, no manual refresh needed.
+  upload, a "Classify sample" picker (no need to have your own test images on hand), a card grid
+  (thumbnail, label + confidence, `#sequence_id`, short uuid, timestamp, pod/node, a per-card
+  delete button), a "Delete all images" button, and a banner (cluster name, pod, node, total
+  images, last sequence id). Polls `/meta` and `/results` every 3 seconds, no manual refresh
+  needed.
 
 The model (MobileNetV3-Small, ImageNet-1000 classes) is exported to ONNX and baked into the
 image at build time, the running container never depends on torch or the internet.
@@ -63,7 +65,7 @@ image at build time, the running container never depends on torch or the interne
 | `Dockerfile` | Multi-stage build: exports the ONNX model, then a slim onnxruntime runtime image |
 | `chart/classify-app/` | The Helm chart, see below |
 | `scripts/build-image.sh` | Rebuilds and pushes the image (multi-arch, `docker buildx`) |
-| `samples/` | A few synthetic placeholder images for exercising the upload pipeline |
+| `samples/` | Real photos (plus a few synthetic placeholders) baked into the image and seeded onto the trainingdata PVC |
 | `doc/` | Screenshots and the application diagram for this README |
 
 The `classify-app` image is published on Docker Hub as `docker.io/cpouthier/ai-image-classify`.
@@ -113,15 +115,3 @@ requests/limits, PVC sizes, PostgreSQL image/credentials).
 To upgrade after changing values: `helm upgrade classify-app chart/classify-app -n ai-demo ...`
 (same `--set` flags as the install). To remove everything: `helm uninstall classify-app -n
 ai-demo`.
-
-## Notes and caveats
-
-- The image bundles a small model (MobileNetV3-Small) on purpose. A bigger model (tried
-  ResNet-50) correlated with unexplained crashes on constrained/unreliable hardware during
-  testing, even though single-image on-demand CPU inference should be far too light a workload
-  to plausibly cause that on its own. If you swap in a bigger model, watch host-level stability,
-  not just Kubernetes-level resource usage.
-- If you change which model is exported (see the `Dockerfile`), the `<release>-model` and
-  `<release>-weights` PVCs need to be recreated (`helm uninstall` then reinstall, or delete
-  those two PVCs and let the initContainer reseed them), it only seeds from the image when the
-  files are missing, it won't overwrite an already-seeded PVC on `helm upgrade`.

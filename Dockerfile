@@ -51,6 +51,7 @@ COPY --from=model-export /labels.txt /app/labels.txt
 
 COPY app/ /app/
 COPY frontend/ /app/frontend/
+COPY samples/ /app/samples/
 
 EXPOSE 8000
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

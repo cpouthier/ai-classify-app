@@ -6,8 +6,8 @@ metadata:
     {{- include "classify-app.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
-  # Recreate, not RollingUpdate: images/model/weights are ReadWriteOnce PVCs, a rolling update
-  # would try to start the new pod before releasing the old one's volumes and deadlock.
+  # Recreate, not RollingUpdate: images/model/trainingdata are ReadWriteOnce PVCs, a rolling
+  # update would try to start the new pod before releasing the old one's volumes and deadlock.
   strategy:
     type: Recreate
   selector:
@@ -25,10 +25,11 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       initContainers:
-        # Seeds the model/weights PVCs from the copy baked into this same image, only on first
-        # boot (no-op once the PVCs already hold the files). This is what makes the model graph
-        # and its trained weights persistent data instead of something that just comes back for
-        # free every time the image is pulled.
+        # Seeds the model PVC and the trainingdata PVC from the copies baked into this same
+        # image. The model files are seeded once (skipped if already present, so the PVC stays
+        # the persistent source of truth). The sample images use cp -n instead, so new samples
+        # added in a later image update still get picked up without disturbing files a previous
+        # boot already seeded (or that were otherwise touched since).
         - name: seed-model
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
@@ -40,15 +41,20 @@ spec:
               if [ ! -f /models/model/model.onnx ]; then
                 cp /app/model.onnx /models/model/model.onnx
               fi
-              if [ ! -f /models/weight/model.onnx.data ]; then
-                cp /app/model.onnx.data /models/weight/model.onnx.data
+              if [ ! -f /models/model/model.onnx.data ]; then
+                cp /app/model.onnx.data /models/model/model.onnx.data
               fi
-              cp /models/weight/model.onnx.data /models/model/model.onnx.data
+              for f in /app/samples/*; do
+                case "$f" in
+                  *.md) continue ;;
+                esac
+                cp -n "$f" /data/trainingdata/ 2>/dev/null || true
+              done
           volumeMounts:
             - name: model
               mountPath: /models/model
-            - name: weights
-              mountPath: /models/weight
+            - name: trainingdata
+              mountPath: /data/trainingdata
       containers:
         - name: classify-app
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -61,6 +67,8 @@ spec:
               value: /data/images
             - name: MODEL_DIR
               value: /models/model
+            - name: TRAININGDATA_DIR
+              value: /data/trainingdata
             - name: POSTGRES_HOST
               value: {{ include "classify-app.fullname" . }}-postgres
             - name: POD_NAME
@@ -86,6 +94,8 @@ spec:
               mountPath: /data/images
             - name: model
               mountPath: /models/model
+            - name: trainingdata
+              mountPath: /data/trainingdata
           readinessProbe:
             httpGet:
               path: /healthz
@@ -105,6 +115,6 @@ spec:
         - name: model
           persistentVolumeClaim:
             claimName: {{ include "classify-app.fullname" . }}-model
-        - name: weights
+        - name: trainingdata
           persistentVolumeClaim:
-            claimName: {{ include "classify-app.fullname" . }}-weights
+            claimName: {{ include "classify-app.fullname" . }}-trainingdata

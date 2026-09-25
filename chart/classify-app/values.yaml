@@ -17,10 +17,14 @@ storageClass: ""
 persistence:
   images:
     size: 5Gi
+  # Holds the ONNX model graph and its weights together (onnxruntime needs both in one
+  # directory), seeded from the image on first boot.
   model:
     size: 300Mi
-  weights:
-    size: 300Mi
+  # Holds the bundled sample images (from samples/), seeded from the image on first boot, so
+  # you have something to classify immediately via the "Load a sample" picker in the UI.
+  trainingdata:
+    size: 100Mi
 
 resources:
   app:

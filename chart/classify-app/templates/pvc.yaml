@@ -28,11 +28,12 @@ spec:
     requests:
       storage: {{ .Values.persistence.model.size }}
 ---
-# The model's trained weights, seeded from the image by the seed-model initContainer.
+# Bundled sample images (from samples/), seeded from the image by the seed-model initContainer,
+# available in the UI's "Load a sample" picker.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "classify-app.fullname" . }}-weights
+  name: {{ include "classify-app.fullname" . }}-trainingdata
   labels:
     {{- include "classify-app.labels" . | nindent 4 }}
 spec:
@@ -41,4 +42,4 @@ spec:
   {{- include "classify-app.storageClassLine" . | nindent 2 }}
   resources:
     requests:
-      storage: {{ .Values.persistence.weights.size }}
+      storage: {{ .Values.persistence.trainingdata.size }}
