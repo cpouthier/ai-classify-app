@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>Puls8 BC/DR image classification demo</title>
+<title>AI Image Classifier</title>
 <style>
   :root {
     --bg: #0f172a;
@@ -102,13 +102,6 @@
     font-size: 0.85rem;
   }
   #deleteAllBtn:hover { background: #dc2626; color: var(--text); }
-  footer {
-    text-align: center;
-    padding: 16px;
-    font-size: 0.75rem;
-    color: var(--muted);
-    opacity: 0.5;
-  }
 </style>
 </head>
 <body>
@@ -129,7 +122,6 @@
   </div>
   <div id="grid"></div>
 </main>
-<footer>Created by Clarence Pouthier</footer>
 <script>
   const dropzone = document.getElementById("dropzone");
   const fileInput = document.getElementById("fileInput");

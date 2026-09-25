@@ -1,1 +1,2 @@
-Screenshots for the README user guide go here (deployment steps, Open WebUI chat, Kasten policy/backup views, BC/DR demo steps).
+Screenshots and diagrams for the main README go here (deployment steps, the app's upload/results
+grid, the application diagram).

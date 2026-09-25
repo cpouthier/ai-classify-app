@@ -1,0 +1,68 @@
+# Default values for classify-app.
+
+image:
+  repository: docker.io/cpouthier/ai-image-classify
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+# A display name for this cluster, shown in the app's banner. Defaults to the release name
+# when left empty, set it explicitly if you want something more readable.
+clusterName: ""
+
+# Leave empty to use the cluster's default StorageClass, set it to pin a specific one.
+storageClass: ""
+
+persistence:
+  images:
+    size: 5Gi
+  model:
+    size: 300Mi
+  weights:
+    size: 300Mi
+
+resources:
+  app:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  postgres:
+    requests:
+      cpu: 200m
+      memory: 384Mi
+    limits:
+      cpu: "1"
+      memory: 768Mi
+
+postgres:
+  image: postgres:16-alpine
+  database: classify
+  user: classify
+  # password: left unset on purpose, auto-generated on first install and kept stable across
+  # upgrades (see templates/postgres-secret.yaml), set it explicitly here to pin your own.
+
+# Tolerate a node going NotReady/Unreachable for only 30s instead of Kubernetes' default 5
+# minutes, so pods reschedule quickly if a node fails.
+tolerations:
+  - key: node.kubernetes.io/not-ready
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 30
+  - key: node.kubernetes.io/unreachable
+    operator: Exists
+    effect: NoExecute
+    tolerationSeconds: 30
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: false
+  className: ""
+  host: ""
+  tls: false

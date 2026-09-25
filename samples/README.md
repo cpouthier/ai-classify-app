@@ -5,6 +5,6 @@ the upload/inference/storage pipeline end to end. A shape on a plain background 
 any real ImageNet class meaningfully, so the label MobileNetV3 returns for them is not the
 point, only that the request succeeds and a row shows up in the grid.
 
-For the actual webinar, replace these with real photos (animals, everyday objects, vehicles),
-ImageNet-1000 classes cover a wide range of them and the demo is far more convincing with
-recognizable results.
+For a real demo, replace these with real photos (animals, everyday objects, vehicles),
+ImageNet-1000 classes cover a wide range of them and the results are far more convincing with
+recognizable images.

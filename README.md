@@ -1,64 +1,41 @@
-# demo-puls8-Kasten
+# AI Image Classifier
 
-Image classification demo app deployed across two Kubernetes clusters, for a BC/DR webinar
-pairing DataCore Puls8's replicated storage with Veeam Kasten's backup/restore workflow.
-Cluster1 runs the live app on Puls8's production StorageClass, cluster2 is the DR target on
-Puls8's replicated DR StorageClass, and Veeam Kasten backs up, exports, and restores the app
-between them.
-
-
-## What it deploys
+An image classification app: drag and drop images, get them classified by a small ONNX model
+running on CPU, browse results in a live-updating grid. Deployed via a portable Helm chart, no
+assumptions about the target cluster.
 
 ![Application diagram](doc/application_diagram.png)
 
-Namespace `ai-demo` on cluster1:
+## What it deploys
+
+Namespace of your choice (defaults to the release name if you don't create one first):
 
 | Component | Role | Storage |
 |---|---|---|
-| `classify-app` | FastAPI backend (ONNX Runtime, MobileNetV3-Small/ImageNet) + a one-page frontend | PVC `images-data`, 5Gi |
-| PostgreSQL | Stores classification results | PVC `postgres-data`, 5Gi |
+| `classify-app` | FastAPI backend (ONNX Runtime, MobileNetV3-Small/ImageNet) + a one-page frontend | PVC, 5Gi |
+| PostgreSQL | Stores classification results | PVC, 5Gi |
 
-The ONNX model itself is split across two more PVCs instead of only living inside the image,
-on purpose, to make the point during the demo that a trained model and its weights are just as
-important to back up as the database:
+The ONNX model itself is split across two more PVCs instead of only living inside the image, on
+purpose, to show that a trained model and its weights are real, persistent data too:
 
-| PVC | Holds | Size |
+| PVC | Holds | Default size |
 |---|---|---|
-| `ai-model` | The ONNX model graph (`model.onnx`), plus a copy of the weights alongside it (onnxruntime needs both in the same directory) | 300Mi |
-| `ai-trained-weight` | The model's trained weights (`model.onnx.data`) | 300Mi |
+| `<release>-model` | The ONNX model graph (`model.onnx`), plus a copy of the weights alongside it (onnxruntime needs both in the same directory) | 300Mi |
+| `<release>-weights` | The model's trained weights (`model.onnx.data`) | 300Mi |
 
 An initContainer on `classify-app` seeds both from the copy baked into the image the first time
-a pod starts (a no-op afterward), so they exist as real, backed-up cluster data rather than
-something that just comes back for free whenever the image is pulled.
+a pod starts (a no-op afterward).
 
-All four PVCs use `sc-prod` on cluster1 and `sc-dr` on cluster2 (the two Puls8 replicated
-StorageClasses). Every pod tolerates `node.kubernetes.io/not-ready` and
-`node.kubernetes.io/unreachable` for only 30 seconds, so a node failure gets pods rescheduled
-quickly during the BC demo instead of waiting on Kubernetes' 5 minute default.
-
-Resource requests/limits (single-image CPU inference is light, this is not tight like an LLM
-workload, but nodes are still 8GB/4 vCPU and also run Puls8 and Veeam Kasten):
-
-| Component | Requests | Limits |
-|---|---|---|
-| `classify-app` | 200m / 256Mi | 1 / 512Mi |
-| PostgreSQL | 200m / 384Mi | 1 / 768Mi |
-
-Veeam Kasten resources (namespace `kasten-io`):
-
-- `ai-demo-s3` Location Profile, S3 bucket for backup and export
-- `ai-demo-hourly` Policy, hourly backup + export of `ai-demo` (an on-demand run is always
-  available too, via a RunAction or the Veeam Kasten dashboard's "Run Once" button)
-- `ai-demo-postgres-blueprint` + `ai-demo-postgres-binding`, app-consistent PostgreSQL backup
-  (`pg_dumpall` streamed to the S3 profile via kando, restored with `psql`). Verified directly
-  against a live Kasten install's CRDs, not just written from the general schema docs.
-- `sc-prod-to-sc-dr` TransformSet, rewrites the StorageClass on restore into cluster2 and
-  patches the `cluster-config` ConfigMap's `CLUSTER_NAME` to cluster2's display name
+Every pod tolerates `node.kubernetes.io/not-ready` and `node.kubernetes.io/unreachable` for only
+30 seconds instead of Kubernetes' 5 minute default, so a node failure gets pods rescheduled
+quickly. `classify-app` and PostgreSQL both use the `Recreate` deployment strategy since their
+PVCs are ReadWriteOnce, a rolling update would otherwise deadlock trying to mount the same
+volume from two pods at once.
 
 ## The app
 
-- `POST /upload`: one or more images (multipart, field name `files`). Each is saved to
-  `images-data`, classified, and inserted into PostgreSQL: `sequence_id` (serial), `uuid`,
+- `POST /upload`: one or more images (multipart, field name `files`). Each is saved to the
+  images PVC, classified, and inserted into PostgreSQL: `sequence_id` (serial), `uuid`,
   `filename`, `label` + `confidence` (top-1), a `top3` array, `created_at` (UTC), `pod_name`
   and `node_name` (both from the Downward API).
 - `GET /results`: the stored rows, most recent first.
@@ -72,7 +49,7 @@ Veeam Kasten resources (namespace `kasten-io`):
   upload, a card grid (thumbnail, label + confidence, `#sequence_id`, short uuid, timestamp,
   pod/node, a per-card delete button) and a "Delete all images" button, and a banner (cluster
   name, pod, node, total images, last sequence id). Polls `/meta` and `/results` every 3
-  seconds, no manual refresh needed during the demo.
+  seconds, no manual refresh needed.
 
 The model (MobileNetV3-Small, ImageNet-1000 classes) is exported to ONNX and baked into the
 image at build time, the running container never depends on torch or the internet.
@@ -84,114 +61,67 @@ image at build time, the running container never depends on torch or the interne
 | `app/` | FastAPI backend source (`main.py`, `db.py`, `inference.py`) |
 | `frontend/` | The single-page frontend served at `/` |
 | `Dockerfile` | Multi-stage build: exports the ONNX model, then a slim onnxruntime runtime image |
-| `manifests/` | Namespace |
-| `postgres/` | PostgreSQL Deployment, Service, PVC, credential Secret template |
-| `classify-app/` | `classify-app` PVCs (images, model, weights), Deployment, Service, Ingress template |
-| `kasten/` | Location Profile, Policy, PostgreSQL Blueprint/Binding, TransformSet |
-| `scripts/` | `deploy-cluster1.sh`, `teardown-cluster1.sh`, `demo-bc.sh`, `demo-dr.sh`, `build-image.sh` |
+| `chart/classify-app/` | The Helm chart, see below |
+| `scripts/build-image.sh` | Rebuilds and pushes the image (multi-arch, `docker buildx`) |
 | `samples/` | A few synthetic placeholder images for exercising the upload pipeline |
-| `doc/` | Screenshots for this README's user guide |
-
-No file named `*.yaml.tpl` should be applied directly or committed with real values, they are
-templates documenting the Secret/config keys the other manifests expect. The deploy script
-creates the actual Secrets and ConfigMaps imperatively from values you type in at deploy time,
-so no credential ever lands in git.
+| `doc/` | Screenshots and the application diagram for this README |
 
 The `classify-app` image is published on Docker Hub as `docker.io/cpouthier/ai-image-classify`.
-`scripts/build-image.sh` rebuilds and pushes it (multi-arch, `docker buildx`) if you change the
-app code, that script is the only place image-build details live.
+`scripts/build-image.sh` is the only place image-build details live, this README doesn't
+document building it, deployment is via Helm directly.
 
 ## Deploying
 
-Requires `kubectl` pointed at cluster1, and an S3 bucket (or S3-compatible endpoint) reachable
-from both clusters for Kasten backup/export.
+Requires `helm` and `kubectl` pointed at any Kubernetes cluster, nothing else is assumed, no
+specific StorageClass, ingress controller, or cloud provider.
 
 ```bash
-./scripts/deploy-cluster1.sh [kube-context]
+helm install classify-app chart/classify-app --create-namespace -n ai-demo
 ```
 
-This walks through, in order: listing the cluster's StorageClasses and asking which one to use
-for the PVCs, creating the namespace, prompting for and creating the PostgreSQL credentials and
-the cluster's display name (`cluster-config` ConfigMap) as Kubernetes Secrets/ConfigMaps,
-deploying PostgreSQL, deploying `classify-app`, asking how to expose it (LoadBalancer, Ingress
-via nginx, Ingress via Traefik, or none, whatever the cluster actually has, nothing is assumed),
-then applying the hourly backup+export Policy. For the Location Profile, the PostgreSQL
-Blueprint/Binding, and the TransformSet, the script asks separately whether to create each one
-itself or leave it to you to apply manually, in case you'd rather set them up by hand or already
-have them from a previous run.
-
-At the end, the script prints the URL to open the app in a browser: the LoadBalancer address
-once one is assigned, the Ingress hostname you gave it, or a `port-forward` command if you chose
-to expose it yourself.
-
-To tear it down: `./scripts/teardown-cluster1.sh [kube-context]` (keeps the S3 profile and
-credentials, since cluster2 still needs them for DR import).
-
-### Preparing cluster2 (DR side)
-
-Cluster2 does not run its own copy of the app, it only needs Veeam Kasten with:
+That's it for a quick try: it uses the cluster's default StorageClass, deploys the Service as
+ClusterIP, and auto-generates a PostgreSQL password on first install (kept stable across
+upgrades). Reach it with:
 
 ```bash
-kubectl --context <cluster2-context> apply -f kasten/location-profile.yaml
-kubectl --context <cluster2-context> apply -f kasten/transformset.yaml
+kubectl port-forward svc/classify-app -n ai-demo 8080:80
 ```
 
-using the same bucket/credentials as cluster1's profile, and the TransformSet's
-`CLUSTER_NAME` value filled in for cluster2 (the deploy script does this substitution for you
-if you choose to create the TransformSet through it).
+then open `http://localhost:8080`.
 
-## Demo runbook
-
-### Pre-demo checklist
-
-- [ ] Cluster1 `ai-demo` namespace healthy: `kubectl get pods -n ai-demo` all Running
-- [ ] `ai-demo-hourly` Policy has run at least once (`kubectl get policyrun -n kasten-io`) so a
-      restore point with an export exists
-- [ ] App reachable, upload a sample from `samples/` and confirm a card appears in the grid
-      within 3 seconds
-- [ ] Cluster2 has `ai-demo-s3` profile and `sc-prod-to-sc-dr` TransformSet applied
-- [ ] `sc-prod` and `sc-dr` StorageClasses exist and are healthy on their respective clusters
-- [ ] Know which worker node on cluster1 you will fail for the BC step
-
-### BC (business continuity) step, cluster1
+### Common overrides
 
 ```bash
-./scripts/demo-bc.sh <node-name> [kube-context]
+helm install classify-app chart/classify-app -n ai-demo --create-namespace \
+  --set clusterName="My Cluster" \
+  --set storageClass=my-storage-class \
+  --set service.type=LoadBalancer
 ```
 
-Shows current pod placement, cordons (and optionally drains) the chosen node, then watches
-`ai-demo` pods until they reschedule onto a healthy node. Talking point: the 30 second
-toleration is what makes the reschedule fast instead of the Kubernetes default 5 minute wait,
-and uploads keep working (aside from a brief gap) throughout.
-
-Uncordon the node after the demo: `kubectl uncordon <node-name>`.
-
-### DR (disaster recovery) step, cluster2
+Or with Ingress instead of a LoadBalancer:
 
 ```bash
-./scripts/demo-dr.sh [kube-context]
+helm install classify-app chart/classify-app -n ai-demo --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.className=nginx \
+  --set ingress.host=classify.example.com
 ```
 
-Triggers a Kasten import from the `ai-demo-s3` profile, lists the available restore points for
-`ai-demo`, then restores the chosen one with the `sc-prod-to-sc-dr` TransformSet applied so
-every PVC lands on `sc-dr` and the banner's cluster name switches to cluster2's. Confirms with
-you before actually restoring. Talking point: the PostgreSQL data (every classification result)
-comes back through the Blueprint's `pg_dumpall`/`psql` cycle, an app-consistent logical restore,
-not a raw disk snapshot, and the uploaded images come back from the PVC snapshot/export
-alongside it.
+See `chart/classify-app/values.yaml` for the full list (image repository/tag, resource
+requests/limits, PVC sizes, PostgreSQL image/credentials).
+
+To upgrade after changing values: `helm upgrade classify-app chart/classify-app -n ai-demo ...`
+(same `--set` flags as the install). To remove everything: `helm uninstall classify-app -n
+ai-demo`.
 
 ## Notes and caveats
 
-- Kasten's Policy/ImportAction/RestoreAction CRD field names can shift slightly between
-  releases. `demo-dr.sh` calls out where to double check (`kubectl explain <kind>.spec
-  --recursive`) before the first run against a new environment. The Blueprint/BlueprintBinding
-  in `kasten/` were verified directly against a live cluster's installed CRDs, so those two are
-  on firmer ground.
-- The TransformSet's ConfigMap patch uses a JSON Patch `add` (not `replace`) on
-  `/data/CLUSTER_NAME`, so it works whether or not that key survived the restore.
-- The model was briefly switched to ResNet-50 for better accuracy, then reverted:
-  single-image on-demand ResNet-50 CPU inference correlated with the same unexplained,
-  trace-free host crashes seen earlier with LLM inference on this hardware. A model that light
-  should never be enough to bring a host down on its own, so this looks like an underlying
-  hardware issue on the demo box rather than a model-size problem, worth keeping in mind before
-  assuming a bigger model is safe just because it "held up" earlier.
+- The image bundles a small model (MobileNetV3-Small) on purpose. A bigger model (tried
+  ResNet-50) correlated with unexplained crashes on constrained/unreliable hardware during
+  testing, even though single-image on-demand CPU inference should be far too light a workload
+  to plausibly cause that on its own. If you swap in a bigger model, watch host-level stability,
+  not just Kubernetes-level resource usage.
+- If you change which model is exported (see the `Dockerfile`), the `<release>-model` and
+  `<release>-weights` PVCs need to be recreated (`helm uninstall` then reinstall, or delete
+  those two PVCs and let the initContainer reseed them), it only seeds from the image when the
+  files are missing, it won't overwrite an already-seeded PVC on `helm upgrade`.

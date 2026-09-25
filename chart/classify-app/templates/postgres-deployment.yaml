@@ -1,50 +1,43 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: postgres
-  namespace: ai-demo
+  name: {{ include "classify-app.fullname" . }}-postgres
   labels:
-    app: postgres
+    {{- include "classify-app.labels" . | nindent 4 }}
 spec:
   replicas: 1
+  # Recreate, not RollingUpdate: the PVC below is ReadWriteOnce, a rolling update would try to
+  # start the new pod before releasing the old one's volume and deadlock.
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: postgres
+      {{- include "classify-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
   template:
     metadata:
       labels:
-        app: postgres
+        {{- include "classify-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
     spec:
+      {{- with .Values.tolerations }}
       tolerations:
-        - key: node.kubernetes.io/not-ready
-          operator: Exists
-          effect: NoExecute
-          tolerationSeconds: 30
-        - key: node.kubernetes.io/unreachable
-          operator: Exists
-          effect: NoExecute
-          tolerationSeconds: 30
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: postgres
-          image: pgvector/pgvector:pg16
+          image: {{ .Values.postgres.image }}
           ports:
             - containerPort: 5432
               name: postgres
           envFrom:
             - secretRef:
-                name: postgres-credentials
+                name: {{ include "classify-app.fullname" . }}-postgres
           env:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           resources:
-            requests:
-              cpu: 200m
-              memory: 384Mi
-            limits:
-              cpu: "1"
-              memory: 768Mi
+            {{- toYaml .Values.resources.postgres | nindent 12 }}
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
@@ -61,4 +54,4 @@ spec:
       volumes:
         - name: postgres-data
           persistentVolumeClaim:
-            claimName: postgres-data
+            claimName: {{ include "classify-app.fullname" . }}-postgres

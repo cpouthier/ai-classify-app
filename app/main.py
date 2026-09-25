@@ -18,7 +18,7 @@ NODE_NAME = os.environ.get("NODE_NAME", "unknown-node")
 
 FRONTEND_PATH = Path(__file__).parent / "frontend" / "index.html"
 
-app = FastAPI(title="Puls8 BC/DR image classification demo")
+app = FastAPI(title="AI Image Classifier")
 
 
 @app.on_event("startup")

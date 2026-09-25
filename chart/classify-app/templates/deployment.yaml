@@ -1,38 +1,37 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: classify-app
-  namespace: ai-demo
+  name: {{ include "classify-app.fullname" . }}
   labels:
-    app: classify-app
+    {{- include "classify-app.labels" . | nindent 4 }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.replicaCount }}
+  # Recreate, not RollingUpdate: images/model/weights are ReadWriteOnce PVCs, a rolling update
+  # would try to start the new pod before releasing the old one's volumes and deadlock.
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: classify-app
+      {{- include "classify-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
   template:
     metadata:
       labels:
-        app: classify-app
+        {{- include "classify-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: app
     spec:
+      {{- with .Values.tolerations }}
       tolerations:
-        - key: node.kubernetes.io/not-ready
-          operator: Exists
-          effect: NoExecute
-          tolerationSeconds: 30
-        - key: node.kubernetes.io/unreachable
-          operator: Exists
-          effect: NoExecute
-          tolerationSeconds: 30
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       initContainers:
-        # Seeds ai-model / ai-trained-weight from the copy of the model baked into this same
-        # image, only on first boot (no-op once the PVCs already hold the files). This is what
-        # makes the model graph and its trained weights persistent, backed-up data instead of
-        # something that just comes back for free every time the image is pulled.
+        # Seeds the model/weights PVCs from the copy baked into this same image, only on first
+        # boot (no-op once the PVCs already hold the files). This is what makes the model graph
+        # and its trained weights persistent data instead of something that just comes back for
+        # free every time the image is pulled.
         - name: seed-model
-          image: docker.io/cpouthier/ai-image-classify:latest
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - sh
             - -c
@@ -46,13 +45,14 @@ spec:
               fi
               cp /models/weight/model.onnx.data /models/model/model.onnx.data
           volumeMounts:
-            - name: ai-model
+            - name: model
               mountPath: /models/model
-            - name: ai-trained-weight
+            - name: weights
               mountPath: /models/weight
       containers:
         - name: classify-app
-          image: docker.io/cpouthier/ai-image-classify:latest
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: 8000
               name: http
@@ -62,7 +62,7 @@ spec:
             - name: MODEL_DIR
               value: /models/model
             - name: POSTGRES_HOST
-              value: postgres
+              value: {{ include "classify-app.fullname" . }}-postgres
             - name: POD_NAME
               valueFrom:
                 fieldRef:
@@ -74,22 +74,17 @@ spec:
             - name: CLUSTER_NAME
               valueFrom:
                 configMapKeyRef:
-                  name: cluster-config
+                  name: {{ include "classify-app.fullname" . }}-config
                   key: CLUSTER_NAME
           envFrom:
             - secretRef:
-                name: postgres-credentials
+                name: {{ include "classify-app.fullname" . }}-postgres
           resources:
-            requests:
-              cpu: 200m
-              memory: 256Mi
-            limits:
-              cpu: "1"
-              memory: 512Mi
+            {{- toYaml .Values.resources.app | nindent 12 }}
           volumeMounts:
-            - name: images-data
+            - name: images
               mountPath: /data/images
-            - name: ai-model
+            - name: model
               mountPath: /models/model
           readinessProbe:
             httpGet:
@@ -104,12 +99,12 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 20
       volumes:
-        - name: images-data
+        - name: images
           persistentVolumeClaim:
-            claimName: images-data
-        - name: ai-model
+            claimName: {{ include "classify-app.fullname" . }}-images
+        - name: model
           persistentVolumeClaim:
-            claimName: ai-model
-        - name: ai-trained-weight
+            claimName: {{ include "classify-app.fullname" . }}-model
+        - name: weights
           persistentVolumeClaim:
-            claimName: ai-trained-weight
+            claimName: {{ include "classify-app.fullname" . }}-weights

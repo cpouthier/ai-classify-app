@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "classify-app.fullname" . }}-images
+  labels:
+    {{- include "classify-app.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- include "classify-app.storageClassLine" . | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.images.size }}
+---
+# The ONNX model graph, plus a copy of the weights alongside it (onnxruntime expects both
+# files in the same directory), seeded from the image by the seed-model initContainer.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "classify-app.fullname" . }}-model
+  labels:
+    {{- include "classify-app.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- include "classify-app.storageClassLine" . | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.model.size }}
+---
+# The model's trained weights, seeded from the image by the seed-model initContainer.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "classify-app.fullname" . }}-weights
+  labels:
+    {{- include "classify-app.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- include "classify-app.storageClassLine" . | nindent 2 }}
+  resources:
+    requests:
+      storage: {{ .Values.persistence.weights.size }}
