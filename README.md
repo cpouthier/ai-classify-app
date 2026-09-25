@@ -19,7 +19,7 @@ Two more PVCs back `classify-app`:
 | PVC | Holds | Default size |
 |---|---|---|
 | `<release>-model` | The ONNX model graph (`model.onnx`) and its weights (`model.onnx.data`), onnxruntime needs both in the same directory | 300Mi |
-| `<release>-trainingdata` | The bundled sample images (from `samples/`), available in the UI's "Classify sample" picker | 100Mi |
+| `<release>-trainingdata` | The bundled sample images (from `samples/`), classify one via `POST /samples/{filename}` | 100Mi |
 
 An initContainer on `classify-app` seeds both from the copies baked into the image the first
 time a pod starts (a no-op afterward for the model, samples are seeded with `cp -n` so new ones
@@ -41,16 +41,17 @@ volume from two pods at once.
 - `DELETE /results`: deletes every image (row + file).
 - `GET /image/{uuid}`: serves the stored image file.
 - `DELETE /image/{uuid}`: deletes one image (row + file).
-- `GET /samples`: lists the bundled sample image filenames available on the trainingdata PVC.
+- `GET /samples`: lists the bundled sample image filenames available on the trainingdata PVC
+  (not currently surfaced in the frontend, callable directly).
 - `POST /samples/{filename}`: classifies one bundled sample as if it had been uploaded.
 - `GET /meta`: cluster name, current pod/node, total image count, last sequence id, everything
   the frontend's banner needs.
 - `GET /healthz`: liveness/readiness target.
 - `GET /`: the one-page frontend (no build step, plain HTML/CSS/JS), drag-and-drop multi-file
-  upload, a "Classify sample" picker (no need to have your own test images on hand), a card grid
-  (thumbnail, label + confidence, `#sequence_id`, short uuid, timestamp, pod/node, a per-card
-  delete button), a "Delete all images" button, and a banner (cluster name, pod, node, total
-  images, last sequence id). Polls `/meta` and `/results` every 3 seconds, no manual refresh
+  upload, a card grid (thumbnail, label + confidence, `#sequence_id`, short uuid, timestamp,
+  pod/node, a per-card delete button), a "Delete all images" button, and a banner (cluster name,
+  pod, node, total images, last sequence id). Polls `/meta` and `/results` every 3 seconds, no
+  manual refresh
   needed.
 
 The model (MobileNetV3-Small, ImageNet-1000 classes) is exported to ONNX and baked into the

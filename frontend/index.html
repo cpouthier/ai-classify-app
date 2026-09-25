@@ -94,25 +94,6 @@
     margin-bottom: 12px;
   }
   .toolbar .spacer { flex: 1; }
-  #sampleSelect {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: 8px;
-    padding: 6px 10px;
-    font-size: 0.85rem;
-  }
-  #loadSampleBtn {
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    border-radius: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    font-size: 0.85rem;
-  }
-  #loadSampleBtn:hover { background: var(--accent); color: var(--bg); }
-  #loadSampleBtn:disabled { opacity: 0.5; cursor: default; background: transparent; color: var(--accent); }
   #deleteAllBtn {
     background: transparent;
     border: 1px solid #dc2626;
@@ -139,8 +120,6 @@
     <input id="fileInput" type="file" multiple accept="image/*" />
   </div>
   <div class="toolbar">
-    <select id="sampleSelect"><option value="">Loading samples...</option></select>
-    <button id="loadSampleBtn" disabled>Classify sample</button>
     <div class="spacer"></div>
     <button id="deleteAllBtn">Delete all images</button>
   </div>
@@ -222,42 +201,6 @@
     refresh();
   });
 
-  const sampleSelect = document.getElementById("sampleSelect");
-  const loadSampleBtn = document.getElementById("loadSampleBtn");
-
-  async function loadSampleList() {
-    try {
-      const res = await fetch("/samples");
-      const samples = await res.json();
-      sampleSelect.innerHTML = "";
-      if (samples.length === 0) {
-        sampleSelect.innerHTML = '<option value="">No samples available</option>';
-        return;
-      }
-      for (const name of samples) {
-        const option = document.createElement("option");
-        option.value = name;
-        option.textContent = name;
-        sampleSelect.appendChild(option);
-      }
-      loadSampleBtn.disabled = false;
-    } catch (err) {
-      console.error("loading sample list failed", err);
-    }
-  }
-
-  loadSampleBtn.addEventListener("click", async () => {
-    const filename = sampleSelect.value;
-    if (!filename) return;
-    loadSampleBtn.disabled = true;
-    try {
-      await fetch(`/samples/${encodeURIComponent(filename)}`, { method: "POST" });
-      refresh();
-    } finally {
-      loadSampleBtn.disabled = false;
-    }
-  });
-
   async function refresh() {
     try {
       const [metaRes, resultsRes] = await Promise.all([
@@ -285,7 +228,6 @@
   }
 
   refresh();
-  loadSampleList();
   setInterval(refresh, 3000);
 </script>
 </body>
