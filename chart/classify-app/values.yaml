@@ -3,7 +3,11 @@
 image:
   repository: docker.io/cpouthier/ai-image-classify
   tag: latest
-  pullPolicy: IfNotPresent
+  # Always, not IfNotPresent: the tag is "latest" and gets pushed to repeatedly during
+  # development, IfNotPresent would let a node keep serving a stale cached image with the same
+  # tag forever. Pin `tag` to an immutable version and switch this back to IfNotPresent for a
+  # real deployment instead of a moving "latest".
+  pullPolicy: Always
 
 replicaCount: 1
 
